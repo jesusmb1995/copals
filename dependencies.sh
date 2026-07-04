@@ -77,17 +77,17 @@ fetch_and_install \
 
 fetch_and_install_jsonschema_gnu() {
 fetch_and_install \
-    "https://github.com/sourcemeta/jsonschema/releases/download/continuous/jsonschema-16.0.0-5ee554a4-linux-x86_64.zip" \
-    "13768d09406589b3fe07392a0786d6b5c21bf8cbbb0dd582f3dd7129411b8380" \
-    "jsonschema-16.0.0-5ee554a4-linux-x86_64/bin/jsonschema" \
+    "https://github.com/sourcemeta/jsonschema/releases/download/v16.0.0/jsonschema-16.0.0-linux-x86_64.zip" \
+    "c9083e65cd4160b06b63f927c4547c5607ab64318fc0a73616f7ecbab72ed708" \
+    "jsonschema-16.0.0-linux-x86_64/bin/jsonschema" \
     "${out_dir}"
 }
 
 fetch_and_install_jsonschema_musl() {
 fetch_and_install \
-    "https://github.com/sourcemeta/jsonschema/releases/download/continuous/jsonschema-16.0.0-5ee554a4-linux-x86_64-musl.zip" \
-    "38c50fed364b933e5614472ea340ce0590920d28d2bc5c1fb147740dcb5add38" \
-    "jsonschema-16.0.0-5ee554a4-linux-x86_64-musl/bin/jsonschema" \
+    "https://github.com/sourcemeta/jsonschema/releases/download/v16.0.0/jsonschema-16.0.0-linux-x86_64-musl.zip" \
+    "aeb239523c5a7b657adff1dac7182272d714d653e17ba9b44ac702bd3d23390c" \
+    "jsonschema-16.0.0-linux-x86_64-musl/bin/jsonschema" \
     "${out_dir}"
 }
 
