@@ -14,7 +14,7 @@ fun read_repo_ids_from_meta(bundle_dir: Text): [Text] {
 }
 
 pub fun main_container(args: [Text]): Null? {
-    trust $ set -x $
+    //trust $ set -x $
     if len(args) < 2 {
         echo_error("container: missing <build|test> <bundle_dir>")
     }
