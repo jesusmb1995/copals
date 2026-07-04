@@ -1,0 +1,50 @@
+import { dir_exists } from "std/fs"
+
+const PROJECT_ROOT = pwd()
+const project_vendor = "{PROJECT_ROOT}/copals/vendor"
+const installed_vendor = "/usr/lib/copals/vendor"
+
+fun resolve_vendor_dir(): Text {
+    if dir_exists(project_vendor) {
+        return project_vendor
+    }
+    if dir_exists(installed_vendor) {
+        return installed_vendor
+    }
+    return ""
+}
+
+pub const VENDOR_DIR = resolve_vendor_dir()
+
+fun jq_resolve(): Text {
+    if VENDOR_DIR == "" {
+        return "jq"
+    }
+    return "{VENDOR_DIR}/jq"
+}
+
+fun j2_resolve(): Text {
+    if VENDOR_DIR == "" {
+        return "j2"
+    }
+    return "{VENDOR_DIR}/j2"
+}
+
+fun jsonnet_resolve(): Text {
+    if VENDOR_DIR == "" {
+        return "jsonnet"
+    }
+    return "{VENDOR_DIR}/jsonnet"
+}
+
+fun jsonschema_resolve(): Text {
+    if VENDOR_DIR == "" {
+        return "jsonschema"
+    }
+    return "{VENDOR_DIR}/jsonschema"
+}
+
+pub const JQ = jq_resolve()
+pub const J2 = j2_resolve()
+pub const JSONNET = jsonnet_resolve()
+pub const JSONSCHEMA = jsonschema_resolve()

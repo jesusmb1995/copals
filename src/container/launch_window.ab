@@ -1,0 +1,83 @@
+#!/usr/bin/env amber
+// launch.ab - Start a native Xephyr window and launch i3 inside a container.
+//
+// Usage:
+//   ./launch.ab <image[:tag]> [--home <dir>]
+// Example:
+//   amber distrobox/launch.ab jberlanga-devtools:latest
+// TODO this is launched on the host, must adapt copals.sh to build (e.g. through container) and execute compiled sh directly at host
+
+import { parse_int, split } from "std/text"
+import { echo_warning } from "std/env"
+import { require_or_die } from "../shlib/cmd.ab"
+import { min_int } from "../shlib/math.ab"
+import { flag_value } from "../shlib/flag.ab"
+import { pkill_exact, pkill_glob } from "../shlib/process.ab"
+
+const MAX_WIDTH = 1680
+const MAX_HEIGHT = 1050
+const XEPHYR_DISPLAY = ":2"
+
+// abandoned x11docker due to no gpu support for alacritty
+
+// Caps host screen at MAX_WIDTH x MAX_HEIGHT.
+fun compute_resolution(): Text? {
+    const dims = $ xdpyinfo | grep dimensions | awk '\{print \$2}' $ failed {
+        echo_warning("launch: could not query host resolution (is an X server running?)")
+        return "{MAX_WIDTH}x{MAX_HEIGHT}"
+    }
+    const parts = split(dims, "x")
+    if len(parts) < 2 {
+        echo_warning("launch: failed parsing screen dimensions")
+        return "{MAX_WIDTH}x{MAX_HEIGHT}"
+    }
+    const width = min_int(parse_int(parts[0])?, MAX_WIDTH)
+    const height = min_int(parse_int(parts[1])?, MAX_HEIGHT)
+    return "{width}x{height}"
+}
+
+fun cleanup_stale_display(): Null {
+    trust pkill_exact("Xephyr")
+    $ rm -f /tmp/.X2-lock /tmp/.X11-unix/X2 $ failed { null }
+}
+
+fun xephyr_screen(resolution: Text, display: Text): Null? {
+    $ Xephyr -br -ac -screen {resolution} {display} & $ ?
+    $ sleep 2 $ ?
+}
+
+fun launch(image: Text): Null? {
+    const resolution = compute_resolution()?
+    cleanup_stale_display()
+
+    echo("launch: starting Xephyr on {XEPHYR_DISPLAY} ({resolution})...")
+    echo("note: use <C-S> to grab mouse and keyboard")
+    xephyr_screen(resolution, XEPHYR_DISPLAY)?
+
+    $ podman run --rm -it \
+        -e DISPLAY={XEPHYR_DISPLAY} \
+        -e HOME=/home/user \
+        -e LIBGL_ALWAYS_SOFTWARE=1 \
+        -v /tmp/.X11-unix:/tmp/.X11-unix \
+        --user=1000 \
+        {image} /usr/bin/i3 $ ?
+
+    trust pkill_glob("Xephyr.*{XEPHYR_DISPLAY}")
+}
+
+pub fun main_launch_window(args): Null? {
+    //$ set -x $ ?
+    if len(args) < 1 {
+        echo("Usage: launch_container.ab <image[:tag]> [--home <dir>]")
+        echo("Example: amber launch_contaianer.ab jberlanga-devtools:latest")
+        fail 1
+    }
+    const image = args[0]
+    require_or_die("Xephyr")
+    require_or_die("xdpyinfo")
+    launch(image)?
+}
+
+main(args) { 
+    main_launch_window(args[1..len(args)])? 
+}

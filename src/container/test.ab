@@ -1,0 +1,119 @@
+import { SHLIB_DIR, BASHUNIT, RESOURCES_DIR } from "../vars.ab"
+import { build_image } from "../shlib/container.ab"
+import { build_base } from "base.ab"
+import { symlink_create_dir } from "../shlib/symlink.ab"
+import { temp_dir_create, dir_create, file_glob, file_write } from "std/fs"
+import { basename } from "../shlib/basename.ab"
+import { lower, sanitize_tag } from "../shlib/text.ab"
+import { match_files, rm_glob } from "../shlib/fs.ab"
+import { replace_regex, split } from "std/text"
+
+fun test_func_names(ab_file: Text): [Text]? {
+    let names = []
+    const raw = $ grep -oE 'pub fun test_[A-Za-z0-9_]+' {ab_file} $ ?
+    for line in split(raw, "\n") {
+        names += [replace_regex(line, "^pub fun ", "")]
+    }
+    return names
+}
+
+fun build_test_entry(ab_files: [Text]): Text? {
+    let imports = "import * from \"shlib/test/bashunit.ab\"\n"
+    let calls = ""
+    for f in ab_files {
+        const mod_base = basename(f)?
+        const mod = replace_regex(mod_base, "\\.ab$", "")
+        imports += "import * from \"{mod}.ab\"\n"
+        const fns = test_func_names(f)?
+        for fn_name in fns {
+            calls += "    {fn_name}()\n"
+        }
+    }
+    return "{imports}\ntrust $ source ~/.profile 2>/dev/null || true $\nmain(_) \{\n{calls}}\n"
+}
+
+fun compile_test_script(tmp: Text, entry_name: Text, out_name: Text, ab_files: [Text]): Text? {
+    const entry = "{tmp}/{entry_name}"
+    file_write(entry, build_test_entry(ab_files)?)?
+    const out_sh = "{tmp}/{out_name}"
+    $ amber build {entry} {out_sh} $ ?
+    rm_glob("/tmp/amber-*", true)?
+    return out_sh
+}
+
+pub fun build_and_run_test_container(
+    bundle_dir: Text,
+    repo_ids: [Text] = [],
+    container_runtime: Text = "podman",
+    user_dir: Text = "",
+    base_image_tag: Text = ""
+): Null? {
+    const test_folder = "{user_dir}/tests"
+    let resolved_base = base_image_tag
+    if resolved_base == "" {
+        resolved_base = "{sanitize_tag(lower(basename(bundle_dir)?)?)}:latest"
+    }
+    const test_image_tag = "localhost/copals-test:latest"
+
+    const tmp = temp_dir_create("copals-test-XXXXXX")?
+
+    const regular_files = match_files(
+        file_glob("{test_folder}/*.ab"), "test_", ".ab", repo_ids)
+
+    const all_screenshot_files = file_glob("{test_folder}/screenshot/*.ab")
+    let screenshot_files = []
+    if len(repo_ids) > 0 {
+        screenshot_files = match_files(all_screenshot_files, "test_screenshot_", ".ab", repo_ids)
+    } else {
+        screenshot_files = all_screenshot_files
+    }
+
+    const ab_files = regular_files + screenshot_files
+    for f in ab_files {
+        cp(f, tmp)?
+    }
+    symlink_create_dir("{SHLIB_DIR}", "{tmp}/shlib")?
+
+    compile_test_script(tmp, "test.ab", "tests.sh", regular_files)?
+    compile_test_script(tmp, "screenshot_test.ab", "screenshot_tests.sh", screenshot_files)?
+
+    const run_tests_sh = "{tmp}/run_tests.sh"
+    file_write(run_tests_sh, "#!/bin/bash\nset -e\nbashunit /tests/tests.sh --parallel\nbashunit /tests/screenshot_tests.sh\n")?
+
+    const pkg = "{tmp}/pkg"
+    dir_create(pkg)?
+    cp("{tmp}/tests.sh", pkg)?
+    cp("{tmp}/screenshot_tests.sh", pkg)?
+    cp(run_tests_sh, pkg)?
+    cp(BASHUNIT, pkg)?
+    cp("{bundle_dir}/meta.json", pkg)?
+
+    const test_base_tag = build_base("copals_test_base.Dockerfile", "copals-test-base:latest", "copals-apt-fast-base:latest", container_runtime)?
+
+    const bashunit_name = basename(BASHUNIT)?
+    const build_args = [
+        "BASE={resolved_base}",
+        "BASE_TOOLS={test_base_tag}",
+        "BASHUNIT_BIN={bashunit_name}",
+        "CONTEXT_DIR=pkg"
+    ]
+    build_image("{RESOURCES_DIR}/deploy_test.Dockerfile", test_image_tag, pkg, build_args, container_runtime)?
+
+    let vols = ""
+    const screenshot_golden = "{test_folder}/screenshot/golden"
+    const screenshot_generated = "{test_folder}/screenshot/.generated"
+    trust $ mkdir -p {screenshot_golden} {screenshot_generated} && chmod 777 {screenshot_generated} $
+    vols += " --volume {screenshot_golden}:/home/user/.golden:ro,z"
+    vols += " --volume {screenshot_generated}:/home/user/.generated:z"
+    const shm_flag = " --shm-size 256M"
+
+    $ {container_runtime} run --rm {shm_flag} {vols} {test_image_tag} $ exited(code) {
+        if code != 0 {
+            trust $ echo '' $
+            trust $ echo 'To promote new screenshots to golden:' $
+            trust $ echo '  cp {screenshot_generated}/*.ref.png {screenshot_golden}/' $
+            trust $ echo '' $
+            fail code 
+        }
+    }
+}

@@ -1,0 +1,9 @@
+import { has_cmd } from "./cmd.ab"
+
+pub fun sudo_cmd(cmd: Text, envvar: [Text] = []): Null? {
+    if has_cmd("sudo") {
+        $ sudo {envvar} {cmd} $ ?
+    } else {
+        $ env {envvar} {cmd} $ ?
+    }
+}

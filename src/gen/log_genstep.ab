@@ -1,0 +1,8 @@
+import { replace_one } from "std/text"
+import { DEST_ROOT } from "../vars.ab"
+
+pub fun log_genstep(type: Text, target_path: Text): Null {
+    const shortened = replace_one(target_path, DEST_ROOT, "")
+    echo("[{type}] {shortened}")
+    return null
+}

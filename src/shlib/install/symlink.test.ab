@@ -1,0 +1,15 @@
+import { assert_eq } from "std/test"
+import { symlink_into_home } from "symlink.ab"
+import { temp_dir_create, dir_exists } from "std/fs"
+import { has_cmd } from "../cmd.ab"
+import { echo_warning } from "std/env"
+
+test "symlink_into_home: creates symlink in home" {
+    if not has_cmd("ln") {
+        echo_warning("ln not available, skipping test")
+    } else {
+        const origin = temp_dir_create("symlink-origin-XXXXXX")?
+        const dest = symlink_into_home(origin, ".local/symlink-test")?
+        assert_eq(dir_exists(dest), true)
+    }
+}

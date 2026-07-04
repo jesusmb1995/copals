@@ -1,0 +1,5 @@
+import * from "shlib/test/bashunit.ab"
+
+pub fun test_greet_script_exists_at_home() {
+    assert_file_at_home_exists(".cache/pipeline-sh-tasks/greet.sh")
+}

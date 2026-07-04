@@ -1,0 +1,9 @@
+import { copy_into_home_or_die } from "shlib/install/cp.ab"
+import { symlink_into_home_or_die } from "shlib/install/symlink.ab"
+import { rsync_or_die_into_home } from "shlib/install/rsync.ab"
+
+pub fun install_file_ops() {
+    copy_into_home_or_die("src/file-ops/cp-dir/copied.txt", ".cache/pipeline-cp-dir")
+    symlink_into_home_or_die("src/file-ops/symlink-dir", ".cache/pipeline-symlink-dir")
+    rsync_or_die_into_home("src/file-ops/rsync-dir/", ".cache/pipeline-rsync-dir")
+}

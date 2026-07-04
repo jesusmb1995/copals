@@ -1,0 +1,19 @@
+pub fun has_flag(args: [Text], flag: Text): Bool {
+    for a in args {
+        if a == flag {
+            return true
+        }
+    }
+    return false
+}
+
+pub fun flag_value(args: [Text], flag: Text): Text {
+    let i = 0
+    while i < len(args) {
+        if args[i] == flag and i + 1 < len(args) {
+            return args[i + 1]
+        }
+        i += 1
+    }
+    return ""
+}

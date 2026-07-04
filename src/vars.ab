@@ -1,0 +1,17 @@
+pub const PROJECT_ROOT = pwd() 
+
+// TODO must be handlded without repo root being outside copals...
+const _REPO_GEN_DIR = "{PROJECT_ROOT}/copals"
+pub const GEN_DIR="{_REPO_GEN_DIR}"
+pub const GEN_SCRIPTS_DIR="{_REPO_GEN_DIR}/src/gen"
+pub const SHLIB_DIR="{_REPO_GEN_DIR}/src/shlib"
+pub const BASHUNIT="{PROJECT_ROOT}/copals/vendor/lib/bashunit"
+
+pub const RESOURCES_DIR="{_REPO_GEN_DIR}/res"
+pub const SCHEMA_FILE="{RESOURCES_DIR}/config.schema.json"
+
+pub const DEST_ROOT="{PROJECT_ROOT}/jberlanga-devtools"
+pub const DEST_DIR="{DEST_ROOT}/src"
+pub const CHANGES_FILE="{DEST_DIR}/.generated_changes"
+pub const INSTALLER_DIR="{DEST_ROOT}"
+pub const HOOKS_DST="{INSTALLER_DIR}/repo-hooks"

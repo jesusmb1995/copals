@@ -1,0 +1,18 @@
+#!/usr/bin/env amber
+
+import { prepare_for_file_transform } from "file-job.ab"
+import { log_genstep } from "log_genstep.ab"
+
+fun compile_ab_file(ab_file: Text, output_path: Text, del: Bool = true): Null? {
+    $ amber build {ab_file} {output_path} $ ?
+    if del {
+        rm(ab_file)?
+    }
+}
+
+pub fun compile_amber_job(tree_dir: Text, ab_file: Text, out_dir: Text, del: Bool = true): Null? {
+    const output_file = prepare_for_file_transform(tree_dir, ab_file, out_dir, "ab", ".sh")?
+    compile_ab_file(ab_file, output_file, del)?
+    log_genstep("built", output_file)
+}
+

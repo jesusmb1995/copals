@@ -1,0 +1,14 @@
+import { echo_error } from "std/env"
+import { execute_sh } from "../sh.ab"
+import { home } from "../env.ab"
+
+pub fun execute_sh_at_home(rel_sh_path): Null? {
+    const h = home()?;
+    execute_sh("{h}/{rel_sh_path}")?
+}
+
+pub fun execute_sh_at_home_or_die(rel_sh_path: Text) {
+    execute_sh_at_home(rel_sh_path) failed {
+        echo_error("failed to run {rel_sh_path}")
+    }
+}

@@ -1,0 +1,40 @@
+import { file_write, file_read } from "std/fs"
+import { JSONNET } from "vendor.ab"
+import { resolve_output_path } from "temp.ab"
+
+pub fun jsonnet_render(jsonnet_path: Text): Text? {
+    return $ {JSONNET} {jsonnet_path} $ ?
+}
+
+pub fun jsonnet_render_file(jsonnet_path: Text, output_path: Text = ""): Text? {
+    const rendered = jsonnet_render(jsonnet_path)?
+    const _output_path = resolve_output_path(output_path)?
+    file_write(_output_path, rendered)?
+    return _output_path
+}
+
+pub fun jsonnet_render_tla(
+    jsonnet_path: Text,
+    tla_name: Text,
+    tla_expr: Text
+): Text? {
+    return $ {JSONNET} --tla-code {tla_name}={tla_expr} {jsonnet_path} $ ?
+}
+
+pub fun jsonnet_render_tla_file(
+    jsonnet_path: Text,
+    tla_name: Text,
+    source_file: Text,
+    tla_str: Text = "",
+    output_path: Text = ""
+): Text? {
+    let args_str = ""
+    if tla_str != "" {
+        args_str = "--tla-str {tla_str}"
+    }
+    const rendered = $ {JSONNET} --tla-code-file {tla_name}={source_file} {args_str} {jsonnet_path} $ ?
+    const _output_path = resolve_output_path(output_path)?
+    file_write(_output_path, rendered)?
+    return _output_path
+}
+

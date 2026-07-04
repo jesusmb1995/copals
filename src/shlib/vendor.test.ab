@@ -1,0 +1,19 @@
+import { assert_eq } from "std/test"
+import { dir_exists } from "std/fs"
+import { VENDOR_DIR, JQ, J2, JSONNET, JSONSCHEMA } from "vendor.ab"
+
+test "vendor: JQ points to jq" {
+    assert_eq(JQ != "", true)
+}
+
+test "vendor: J2 points to j2" {
+    assert_eq(J2 != "", true)
+}
+
+test "vendor: JSONNET points to jsonnet" {
+    assert_eq(JSONNET != "", true)
+}
+
+test "vendor: JSONSCHEMA points to jsonschema" {
+    assert_eq(JSONSCHEMA != "", true)
+}

@@ -1,0 +1,153 @@
+#!/usr/bin/env amber
+
+import { file_read, dir_create, dir_exists, temp_dir_create, file_exists } from "std/fs"
+import { unique_match_file_glob_or_fail, file_ext, abspath } from "../shlib/fs.ab"
+import { echo_success, echo_error } from "std/env"
+import { split_lines, parse_int, replace_regex, replace_one, split } from "std/text"
+import { temp_file_create } from "../shlib/temp.ab"
+import { GEN_DIR, GEN_SCRIPTS_DIR, SHLIB_DIR, RESOURCES_DIR, SCHEMA_FILE, DEST_DIR, INSTALLER_DIR } from "../vars.ab"
+import { log_genstep } from "log_genstep.ab"
+import { run_parallel } from "../shlib/parallel.ab"
+import { get_filename_without_prefix } from "../shlib/regex.ab"
+import { render_j2_template } from "render-job.ab"
+import { compile_amber_job } from "compile-job.ab"
+import { write_json_array } from "../shlib/json.ab"
+import { JQ, JSONNET, JSONSCHEMA } from "../shlib/vendor.ab"
+import { jsonnet_render_tla_file } from "../shlib/jsonnet.ab"
+import { symlink_create_dir } from "../shlib/symlink.ab"
+import { has_flag } from "../shlib/flag.ab"
+import { time_ms } from "../shlib/time.ab"
+
+const MAX_JOBS = 8
+
+fun _render_jsonnet_into_filepath(jsonnet_path: Text, name: Text): Text? {
+    const tmp_filepath = temp_file_create("-{name}.json")?
+    $ {JSONNET} {jsonnet_path} > {tmp_filepath} $ ?
+    return tmp_filepath
+}
+
+fun render_jsonnet_into_filepath(jsonnet_path: Text): Text? {
+    const config_file = _render_jsonnet_into_filepath(
+        jsonnet_path, "jbtd-config-rendered")?
+    $ {JSONSCHEMA} validate {SCHEMA_FILE} {config_file} $ ?
+    return config_file
+}
+
+fun render_jinja_tree(config_file: Text, tree_dir: Text, out_dir: Text): Null?  {
+    let tasks = [] 
+    const templates = split_lines($ find {tree_dir} -type f -name "*.j2" $ ?)
+    for template in templates {
+        tasks += ["{template} {tree_dir} {config_file} {out_dir}"]
+    }
+    run_parallel(tasks, MAX_JOBS, "{GEN_SCRIPTS_DIR}/render-job.ab")?
+}
+
+fun render_metadata(config_file: Text, out_json_path: Text): Null? {
+    jsonnet_render_tla_file(
+        "{GEN_SCRIPTS_DIR}/metadata.jsonnet",
+        "source_jsonnet",
+        config_file,
+        "",
+        out_json_path
+    )?
+    log_genstep("rendered", out_json_path)
+}
+
+pub fun resolve_config_path(user_dir: Text, config_name: Text): Text? {
+    if replace_one(config_name, "/", "") != config_name {
+        return config_name
+    }
+    const jsonnet_path = "{user_dir}/config-presets/{config_name}.jsonnet"
+    if file_exists(jsonnet_path) {
+        return jsonnet_path
+    }
+    const json_path = "{user_dir}/config-presets/{config_name}.json"
+    if file_exists(json_path) {
+        return json_path
+    }
+    echo_error("Config preset not found: '{config_name}' in {user_dir}/config-presets/")
+    fail 1
+}
+
+fun process_repos(dest_dir: Text, config_file: Text, force_run: Bool, user_dir: Text): [Text]? {
+    const repo_ids = split_lines(
+        $ {JQ} -r '.repositories[] | select(.enabled == true) | .id' {config_file} $ ?)
+
+    let tasks = [] 
+    for repo_id in repo_ids {
+        tasks += ["{config_file} {GEN_DIR} {repo_id} {dest_dir} {user_dir} {force_run}"]
+    }
+    run_parallel(tasks, MAX_JOBS, "{GEN_SCRIPTS_DIR}/process-repo.ab")?
+    return repo_ids
+}
+
+fun build_installer(
+    repo_ids: [Text],
+    hooks_src: Text, out_dir: Text, 
+    config_file: Text): Null? 
+{
+    const cleanup = true
+    const hooks_dst_tmp = temp_dir_create("jbtd-install-build-XXXXXX", cleanup, cleanup)?
+    let ids = []
+    for id in repo_ids {
+        const hook_glob = "{hooks_src}/install_{id}.ab*"
+        const hook = unique_match_file_glob_or_fail(hook_glob) failed {
+            const exit_code = status()
+            if exit_code != 1 {
+                echo("Failed glob {hook_glob}")
+                fail 2
+            } else {
+                continue
+            }
+        }
+        const ext = file_ext(hook)?
+        ids += [id]
+        cp(hook, "{hooks_dst_tmp}/{id}.{ext}")?
+        log_genstep("placed", "{hooks_dst_tmp}/{id}.{ext}")
+    }
+
+    const ab_file = "install.ab"
+    cp("{RESOURCES_DIR}/{ab_file}.j2", hooks_dst_tmp)?
+    symlink_create_dir(SHLIB_DIR, "{hooks_dst_tmp}/shlib")?
+    render_jinja_tree(config_file, hooks_dst_tmp, hooks_dst_tmp)?
+    compile_amber_job(hooks_dst_tmp, "{hooks_dst_tmp}/{ab_file}", out_dir, false)?
+}
+
+fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_run: Bool, user_dir: Text): Null? {
+    dir_create(dest_dir)?
+    dir_create(installer_dir)?
+    const config_file = render_jsonnet_into_filepath(config_jsonnet)?
+    render_metadata(config_file, "{installer_dir}/meta.json")?
+    const ids = process_repos(dest_dir, config_file, force_run, user_dir)?
+    const hooks_src = "{user_dir}/repo-hooks"
+    build_installer(ids, hooks_src, installer_dir, config_file)?; 
+    render_jinja_tree(config_file, dest_dir, dest_dir)?
+}
+
+pub fun main_generate(args): Null? {
+    const force_run = has_flag(args, "-f") or has_flag(args, "--force")
+    const debug = has_flag(args, "-d") or has_flag(args, "--debug")
+    if debug {
+        $ set -x $ ?
+    }
+    if len(args) < 2 {
+        echo("generate: missing <user_dir> <config_name> [dest_root]")
+        echo("  user_dir     path to user directory (e.g. 'user')")
+        echo("  config_name  config preset name (e.g. 'config_personal')")
+        fail 1
+    }
+    const user_dir_input = abspath(args[0])?
+    const config_name = args[1]
+    const config_jsonnet = resolve_config_path(user_dir_input, config_name)?
+
+    const start_time = time_ms()?
+
+    if len(args) > 2 {
+        const dest_root = args[2]
+        generate(config_jsonnet, "{dest_root}/src", dest_root, force_run, user_dir_input)?
+    } else {
+        generate(config_jsonnet, DEST_DIR, INSTALLER_DIR, force_run, user_dir_input)?
+    }
+    const elapsed = time_ms()? - start_time
+    echo_success("Generation finished in {elapsed} ms")
+}

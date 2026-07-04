@@ -1,0 +1,47 @@
+import { assert_eq } from "std/test"
+import { is_patch_already_applied, git_apply_patch, git_init, git_add, git_commit } from "git.ab"
+import { temp_dir_create } from "std/fs"
+import { temp_file_create } from "temp.ab"
+import { has_cmd } from "cmd.ab"
+import { echo_warning } from "std/env"
+
+test "is_patch_already_applied: returns false before patch is applied" {
+    if not has_cmd("git") {
+        echo_warning("git not available, skipping test")
+    } else {
+        const repo = temp_dir_create("git-test-XXXXXX")?
+        git_init(repo)?
+        $ echo hello > {repo}/file.txt $ ?
+        git_add(repo, "file.txt")?
+        git_commit(repo, "Test", "test@test.com", "initial")?
+        
+        const patch_file = temp_file_create("-patch.diff")?
+        $ echo world > {repo}/file.txt $ ?
+        $ git -C {repo} diff file.txt > {patch_file} $ ?
+        $ git -C {repo} checkout file.txt $ ?
+        
+        const applied = is_patch_already_applied(repo, patch_file)?
+        assert_eq(applied, false)
+    }
+}
+
+test "is_patch_already_applied: returns true after patch is applied" {
+    if not has_cmd("git") {
+        echo_warning("git not available, skipping test")
+    } else {
+        const repo = temp_dir_create("git-test2-XXXXXX")?
+        git_init(repo)?
+        $ echo hello > {repo}/file.txt $ ?
+        git_add(repo, "file.txt")?
+        git_commit(repo, "Test", "test@test.com", "initial")?
+        
+        const patch_file = temp_file_create("-patch.diff")?
+        $ echo world > {repo}/file.txt $ ?
+        $ git -C {repo} diff file.txt > {patch_file} $ ?
+        $ git -C {repo} checkout file.txt $ ?
+        git_apply_patch(repo, patch_file)?
+        
+        const applied = is_patch_already_applied(repo, patch_file)?
+        assert_eq(applied, true)
+    }
+}

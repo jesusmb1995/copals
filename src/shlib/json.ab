@@ -1,0 +1,27 @@
+import { file_write } from "std/fs"
+import { JQ } from  "vendor.ab"
+
+pub fun to_json_array(key: Text, arr: [Text]): Text? {
+    return $ {JQ} -n --arg key {key} '\{(\$key): \$ARGS.positional}' --args {arr} $ ?
+}
+
+pub fun write_json_array(key: Text, arr: [Text], out_file: Text): Null? {
+    file_write(out_file, to_json_array(key, arr)?)?
+}
+
+pub fun json_value(json_filepath: Text, key: Text): Text? {
+    const val = $ {JQ} -r --arg key {key} '.[\$key]' {json_filepath} $ ?
+    if val == "null" {
+        echo("key '{key}' not found at {json_filepath}")
+        fail 1
+    }
+    return val
+}
+
+pub fun json_value_or(json_filepath: Text, key: Text, default: Text): Text? {
+    const val = $ {JQ} -r --arg key {key} '.[\$key] // ""' {json_filepath} $ ?
+    if val == "" {
+        return default
+    }
+    return val
+}

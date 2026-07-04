@@ -1,0 +1,12 @@
+import { time_ms, sleep_ms } from "time.ab"
+import { assert_true } from "test/bashunit.ab"
+
+test "timing" {
+    const start = time_ms()?
+    sleep_ms(100)?
+    const end = time_ms()?
+    const elapsed = end - start
+    // assert elapsed is approximately 100ms (within 50% tolerance: 50-150ms)
+    assert_true(elapsed > 50 and elapsed < 150)
+    echo("elapsed: {elapsed}ms")
+}

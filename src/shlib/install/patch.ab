@@ -1,0 +1,17 @@
+import { home } from "../env.ab"
+import { is_patch_already_applied, git_apply_patch } from "../git.ab"
+import { echo_error } from "std/env"
+
+fun _apply_patch_at_home(patch: Text, rel_target_repo: Text): Null? {
+    const home = home()?
+    const target_repo = "{home}/{rel_target_repo}" 
+    if not is_patch_already_applied(target_repo, patch)? {
+        git_apply_patch(target_repo, patch)?
+    }
+}
+
+pub fun apply_patch_at_home_or_die(patch: Text, rel_target_repo: Text) {
+    _apply_patch_at_home(patch, rel_target_repo) failed {
+        echo_error("deploy of {patch} into {rel_target_repo} failed")
+    }
+}

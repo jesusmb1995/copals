@@ -1,0 +1,53 @@
+import { is_command } from "std/env"
+import { dir_create, dir_exists, symlink_create } from "std/fs"
+import { echo_warning, echo_success } from "std/env"
+import { temp_file_create } from "temp.ab"
+import { sudo_cmd } from "sudo.ab"
+
+pub fun apt_install(package: Text): Null? {
+    sudo_cmd("apt-get install -y --no-install-recommends {package}", ["DEBIAN_FRONTEND=noninteractive"])?
+}
+
+pub fun apt_install_deb(package: Text, url: Text): Null? {
+    const tmp_deb = temp_file_create("-{package}.deb")
+    $ curl -fsSL -o {tmp_deb} {url} $?
+    apt_install(tmp_deb)?
+    rm(tmp_deb)?
+}
+
+pub fun npm_install(package: Text): Null? {
+    if not is_command("npm") {
+        apt_install("npm")
+    }
+    sudo_cmd("npm install -g {package}")?
+}
+
+fun _brew_fix_lock_dir(): Null? {
+    const tmpd = "/tmp/brew-locks"
+    const locks_dir = "/home/linuxbrew/.linuxbrew/var/homebrew/locks"
+    
+    if not dir_exists(tmpd) {
+        dir_create(tmpd)?
+    }
+    if dir_exists(locks_dir) {
+        if not $ test -L {locks_dir} $ succeeded {
+            rm(locks_dir, true)?
+        }
+        symlink_create(tmpd, locks_dir)? 
+    } else {
+        dir_create(locks_dir)?
+        symlink_create(tmpd, locks_dir)?
+    }
+}
+
+pub fun brew_install(): Null? {
+    if not is_command("brew") {
+        curl_install("brew", "https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh")
+    }
+    _brew_fix_lock_dir()?
+}
+
+pub fun curl_install(bin_name: Text, url: Text): Null? {
+    echo("Installing {bin_name} via url {url}...")
+    $ NONINTERACTIVE=1 curl -fsSL {url} | bash $?
+}

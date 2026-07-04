@@ -1,0 +1,17 @@
+import { assert_eq } from "std/test"
+import { rsync_into_home } from "rsync.ab"
+import { temp_dir_create, file_write, dir_exists } from "std/fs"
+import { home } from "../env.ab"
+import { has_cmd } from "../cmd.ab"
+import { echo_warning } from "std/env"
+
+test "rsync_into_home: does not fail on valid input" {
+    if not has_cmd("rsync") {
+        echo_warning("rsync not available, skipping test")
+    } else {
+        const src = temp_dir_create("rsync-src-XXXXXX")?
+        file_write("{src}/file.txt", "hello")?
+        rsync_into_home(src, ".local/shared-rsync-test")?
+        assert_eq(true, true)
+    }
+}

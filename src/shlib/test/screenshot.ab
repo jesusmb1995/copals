@@ -1,0 +1,275 @@
+import { has_cmd } from "../cmd.ab"
+import { assert_true, skip_test } from "bashunit.ab"
+import { dir_exists } from "std/fs"
+import { replace_regex } from "std/text"
+
+pub fun log(msg: Text) {
+    trust $ echo "{msg}" >&2 $
+}
+
+pub fun home_str(): Text {
+    return trust $ echo ~ $
+}
+
+pub fun golden_dir(): Text {
+    return home_str() + "/.golden"
+}
+
+pub fun generated_dir(): Text {
+    return home_str() + "/.generated"
+}
+
+pub fun golden_path(name: Text): Text {
+    return golden_dir() + "/" + name + ".ref.png"
+}
+
+pub fun generated_path(name: Text): Text {
+    return generated_dir() + "/" + name + ".ref.png"
+}
+
+pub fun ensure_dirs() {
+    const gen = generated_dir()
+    const gold = golden_dir()
+    if not dir_exists(gen) {
+        trust $ mkdir -p {gen} $
+    }
+    if not dir_exists(gold) {
+        trust $ mkdir -p {gold} $
+    }
+}
+
+pub fun screenshot_available(required: [Text] = []): Bool {
+    if not has_cmd("Xvfb") { return false }
+    if not has_cmd("import") { return false }
+    for c in required {
+        if not has_cmd(c) { return false }
+    }
+    return true
+}
+
+pub fun first_available(candidates: [Text]): Text {
+    for c in candidates {
+        if has_cmd(c) { return c }
+    }
+    return ""
+}
+
+fun xvfb_clean_locks(display: Text) {
+    const num = replace_regex(display, "^:", "")
+    // TODO REVIEW: re-use function from launch-window
+    trust $ rm -f /tmp/.X{num}-lock /tmp/.X11-unix/X{num} 2>/dev/null; true $
+}
+
+// TODO REVIEW: dont force infallible on these functions, the user can wrap them on failed {} if needed buut makes no sense to use trust everywhere at this level 
+pub fun xvfb_start(display: Text = ":99", geometry: Text = "1152x648x24") {
+    log("[screenshot] starting Xvfb on {display} ({geometry})")
+    trust $ pkill -f "Xvfb {display}" 2>/dev/null; sleep 0.5 $
+    xvfb_clean_locks(display)
+    trust $ Xvfb {display} -screen 0 {geometry} </dev/null >/dev/null 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- & $
+    trust $ sleep 1 $
+    trust $ DISPLAY={display} timeout 5 xsetroot -solid "#2b2b2b" 2>/dev/null || true $
+    log("[screenshot] Xvfb ready on {display}")
+}
+
+pub fun xvfb_stop(display: Text = ":99") {
+    // TODO REVIEW: re-use process shlib fu nctions? to kill
+    trust $ pkill -f "Xvfb {display}" 2>/dev/null || true $
+    // TODO REVIEW this should be  shlib sleep function with ?
+    trust $ sleep 0.3 $
+    xvfb_clean_locks(display)
+    // TODO REVIEW this should be  shlib rm glob function
+    trust $ rm -rf /tmp/.jbdt_* $
+}
+
+pub fun i3_start(display: Text = ":99") {
+    trust $ DISPLAY={display} env -u I3SOCK i3 -c ~/.config/i3/config >/dev/null 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- & $
+    // TODO REVIEW this should be  shlib sleep function with ?
+    trust $ sleep 1 $
+    let i = 0
+    while i < 40 {
+        $ DISPLAY={display} i3-msg nop >/dev/null 2>&1 $ succeeded { break }
+        trust $ sleep 0.5 $
+        i += 1
+    }
+}
+
+pub fun i3_stop() {
+    trust $ i3-msg exit 2>/dev/null || true $
+    trust $ sleep 0.5 $
+}
+
+pub fun window_wait(display: Text, selector: Text, timeout_secs: Int = 15): Bool {
+    let found = false
+    let i = 0
+    log("[screenshot] waiting for window '{selector}' on {display} (up to {timeout_secs}s)")
+    while i < timeout_secs * 2 {
+        $ DISPLAY={display} timeout 3 xdotool search --onlyvisible {selector} >/dev/null 2>&1 $ succeeded {
+            found = true
+            break
+        }
+        trust $ sleep 0.5 $
+        i += 1
+    }
+    if found {
+        log("[screenshot] window '{selector}' found after {i} polls")
+    } else {
+        log("[screenshot] window '{selector}' NOT found after {timeout_secs}s")
+    }
+    return found
+}
+
+pub fun window_title_contains(display: Text, selector: Text, needle: Text): Bool {
+    const wid = trust $ DISPLAY={display} xdotool search --onlyvisible {selector} 2>/dev/null | head -1 $
+    if wid == "" { return false }
+    const title = trust $ DISPLAY={display} xdotool getwindowname {wid} 2>/dev/null || true $
+    $ echo "{title}" | grep -qi {needle} $ succeeded { return true }
+    return false
+}
+
+pub fun press_key(display: Text, keys: Text) {
+    trust $ DISPLAY={display} xdotool key --clearmodifiers {keys} $
+}
+
+pub fun sleep_secs(secs: Num) {
+    trust $ sleep {secs} $
+}
+
+pub fun capture(name: Text, display: Text = ":99") {
+    ensure_dirs()
+    const actual = generated_path(name)
+    log("[screenshot] capturing '{name}' on {display}")
+    $ DISPLAY={display} timeout 5 import -window root {actual} >/dev/null 2>&1 $ failed {
+        log("capture: import failed for {name} on {display}")
+        // TODO REVIEW: use touch shlib function...
+        trust $ touch {actual}.CAPTURE_FAILED $
+    }
+    log("[screenshot] captured {actual}")
+}
+
+pub fun screenshot_status(name: Text, threshold: Int = 500000): Text {
+    const golden = golden_path(name)
+    const actual = generated_path(name)
+    $ [ -f {golden} ] $ failed {
+        // TODO REVIEW: use touch shlib function...
+        trust $ touch {actual}.MISSING $
+        return "missing"
+    }
+    // TODO REVIEW: use file_exist or similar amber function not raw -f 
+    $ [ -f {actual} ] $ failed { return "mismatch" }
+    let ok = false
+    // TODO REVIEW: this is unreadable move to fun() (not puiblic) and break down statements, use amber functions when possible
+    $ timeout 10 compare -metric AE -fuzz 5% {golden} {actual} /dev/null 2>/tmp/.jbdt_ae_{name} >/dev/null; cut -d' ' -f1 /tmp/.jbdt_ae_{name} | tr -dc 0-9 | xargs test {threshold} -gt $ succeeded {
+        ok = true
+    }
+    if not ok {
+        trust $ compare -fuzz 5% {golden} {actual} {actual}.diff.png 2>/dev/null || true $
+        return "mismatch"
+    }
+    return "match"
+}
+
+pub fun screenshot_assert(name: Text, threshold: Int = 500000) {
+    const result = screenshot_status(name, threshold)
+    if result != "match" {
+        log("screenshot {name}: {result}; if intentional, promote ~/.generated/{name}.ref.png -> ~/.golden/{name}.ref.png")
+        trust $ assert_false true $
+    } else {
+        log("[screenshot] {name}: MATCH")
+        assert_true(true)
+    }
+}
+
+// Kill processes spawned by the scenario before stopping the display.
+fun kill_apps(cmds: [Text]) {
+    for cmd in cmds {
+        // TODO REVIEW: use shlib process 
+        trust $ pkill -f {cmd} 2>/dev/null || true $
+    }
+}
+
+pub fun run_scenario(
+    name: Text,
+    required: [Text],
+    launch: Text,
+    selector: Text,
+    settle_secs: Num,
+    threshold: Int = 500000,
+    cmds: [Text] = []
+) {
+    if not screenshot_available(required) {
+        log("SKIP: screenshot tools unavailable (required: {required})")
+        skip_test("screenshot tools unavailable for {name}")
+    } else {
+        xvfb_start()
+        log("[screenshot] {name}: launching: DISPLAY=:99 {launch}")
+        trust $ DISPLAY=:99 eval {launch} </dev/null 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- $
+        let proceed = true
+        if selector != "" {
+            if not window_wait(":99", selector, 15) {
+                kill_apps(cmds)
+                xvfb_stop()
+                log("[screenshot] {name}: window never appeared")
+                trust $ assert_false true $
+                proceed = false
+            }
+        }
+        if proceed {
+            if settle_secs > 0 {
+                log("[screenshot] {name}: settling {settle_secs}s")
+                sleep_secs(settle_secs)
+            }
+            capture(name)
+            kill_apps(cmds)
+            xvfb_stop()
+            log("[screenshot] {name}: comparing against golden")
+            screenshot_assert(name, threshold)
+        }
+    }
+}
+
+pub fun run_i3_scenario(
+    name: Text,
+    required: [Text],
+    key: Text,
+    selector: Text,
+    settle_secs: Num,
+    title_needle: Text = "",
+    threshold: Int = 500000,
+    cmds: [Text] = []
+) {
+    if not screenshot_available(required) {
+        log("SKIP: screenshot tools unavailable (required: {required})")
+        skip_test("screenshot tools unavailable for {name}")
+    } else {
+        xvfb_start()
+        i3_start()
+        if key != "" {
+            press_key(":99", key)
+        } else {
+            trust $ DISPLAY=:99 i3-msg -q "exec --no-startup-id alacritty" 2>/dev/null || true $
+        }
+        let ok = true
+        if selector != "" {
+            ok = window_wait(":99", selector, 15)
+        }
+        if ok and title_needle != "" {
+            ok = window_title_contains(":99", selector, title_needle)
+        }
+        if not ok {
+            i3_stop()
+            kill_apps(cmds)
+            xvfb_stop()
+            log("[screenshot] {name}: expected window/title did not appear")
+            trust $ assert_false true $
+        } else {
+            if settle_secs > 0 {
+                sleep_secs(settle_secs)
+            }
+            capture(name)
+            i3_stop()
+            kill_apps(cmds)
+            xvfb_stop()
+            screenshot_assert(name, threshold)
+        }
+    }
+}

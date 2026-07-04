@@ -1,0 +1,10 @@
+import { parse_int, parse_num } from "std/text"
+
+pub fun time_ms(): Int? {
+    return parse_int($ date +%s%3N $ ?)?
+}
+
+pub fun sleep_ms(ms: Int): Null? {
+    const ms_int = parse_num($ echo "scale=3; {ms}/1000" | bc $ ?)?
+    sleep(ms_int)?
+}

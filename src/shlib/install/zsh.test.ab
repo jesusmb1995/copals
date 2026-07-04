@@ -1,0 +1,18 @@
+import { assert_eq } from "std/test"
+import { execute_zsh_at_home } from "zsh.ab"
+import { temp_file_create } from "../temp.ab"
+import { file_write } from "std/fs"
+import { home } from "../env.ab"
+import { has_cmd } from "../cmd.ab"
+import { echo_warning } from "std/env"
+
+test "execute_zsh_at_home: runs zsh script from home" {
+    if not has_cmd("zsh") {
+        echo_warning("zsh not available, skipping test")
+    } else {
+        const h = home()?
+        file_write("{h}/.local/test-script.sh", "#!/usr/bin/env zsh\necho hello-from-zsh")?
+        execute_zsh_at_home(".local/test-script.sh")?
+        assert_eq(true, true)
+    }
+}

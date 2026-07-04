@@ -1,0 +1,23 @@
+import { assert_eq } from "std/test"
+import { has_cmd, which_cmd } from "cmd.ab"
+
+test "has_cmd: returns true for existing command" {
+    assert_eq(has_cmd("bash"), true)
+}
+
+test "has_cmd: returns false for missing command" {
+    assert_eq(has_cmd("some_nonexistent_cmd_xyz"), false)
+}
+
+test "which_cmd: returns path for existing command" {
+    const p = which_cmd("bash")?
+    assert_eq(p != "", true)
+}
+
+test "which_cmd: fails for missing command" {
+    let saw_failure = false
+    which_cmd("some_nonexistent_cmd_xyz") failed {
+        saw_failure = true
+    }
+    assert_eq(saw_failure, true)
+}

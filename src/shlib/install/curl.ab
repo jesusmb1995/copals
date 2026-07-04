@@ -1,0 +1,11 @@
+import { echo_error } from "std/env"
+
+pub fun install_via_curl(url: Text): Null? {
+    $ NONINTERACTIVE=1 curl -fsSL {url} | bash $ ?
+}
+
+pub fun install_via_curl_or_die(url: Text) {
+    install_via_curl(url) failed {
+        echo_error("failed to install {url} via curl")
+    }
+}

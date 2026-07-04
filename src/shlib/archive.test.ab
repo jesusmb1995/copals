@@ -1,0 +1,25 @@
+import { assert_eq } from "std/test"
+import { unzip } from "archive.ab"
+import { temp_dir_create, file_write } from "std/fs"
+import { temp_file_create } from "temp.ab"
+import { has_cmd } from "cmd.ab"
+import { echo_warning } from "std/env"
+
+test "unzip: extracts zip contents" {
+    if not has_cmd("zip") {
+        echo_warning("zip not available, skipping test")
+    } else {
+        const zip_file = temp_file_create("-test.zip")?
+        const dest_dir = temp_dir_create("unzip-test-XXXXXX")?
+        $ rm -f {zip_file} $ ?
+        $ zip -j {zip_file} /etc/hostname $ ?
+        
+        unzip(zip_file, dest_dir)?
+        
+        let extracted = false
+        $ test -f "{dest_dir}/hostname" $ succeeded {
+            extracted = true
+        }
+        assert_eq(extracted, true)
+    }
+}

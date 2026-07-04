@@ -1,0 +1,8 @@
+// pkill_exact only matches by exact process name; safe to test with a
+// nonexistent name. We don't test pkill_glob: its `-9 -f` matches by pattern
+// and would clobber the test harness parent if it ever matched.
+import { pkill_exact } from "process.ab"
+
+test "pkill_exact: does not throw on missing process" {
+    trust pkill_exact("definitely_not_a_real_process_xyz")
+}

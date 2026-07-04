@@ -1,0 +1,56 @@
+import { replace_regex } from "std/text"
+import { file_glob } from "std/fs"
+
+pub fun filename(path: Text): Text {
+    return replace_regex(path, "^.*/", "")
+}
+
+pub fun file_ext(path: Text): Text? {
+    return $ echo "{path}" | cut -d. -f2- $ ?
+}
+
+pub fun unique_match_file_glob_or_fail(path_glob: Text): Text? {
+    const matches = file_glob(path_glob)
+    if len(matches) <= 0 { fail 1 }
+    if len(matches) > 1 { fail 2 }
+    return matches[0]
+}
+
+pub fun abspath(path: Text): Text? {
+    return $ realpath {path} $ ?
+}
+
+pub fun realpath_or_empty(path: Text): Text {
+    return trust $ realpath "{path}" 2>/dev/null || true $
+}
+
+pub fun rm_glob(pattern: Text, recursive: Bool = false): Null? {
+    if recursive {
+        $ rm -rf {pattern} $ ?
+    } else {
+        $ rm -f {pattern} $ ?
+    }
+}
+
+pub fun match_files(
+    files: [Text],
+    prefix: Text,
+    suffix: Text,
+    match: [Text] = []
+): [Text] {
+    let result = []
+    if len(match) > 0 {
+        for f in files {
+            const base_name = filename(f)
+            for m in match {
+                if base_name == "{prefix}{m}{suffix}" {
+                    result += [f]
+                    break
+                }
+            }
+        }
+    } else {
+        result = files
+    }
+    return result
+}

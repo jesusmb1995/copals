@@ -1,0 +1,11 @@
+import { temp_file_create } from "temp.ab"
+
+pub fun download_to(url: Text, target: Text): Text? {
+    $ curl -fsSL {url} -o {target} $ ?
+}
+
+pub fun download_tmp(url: Text): Text? {
+    const target = temp_file_create()?
+    download_to(url, target)?
+    return target
+}

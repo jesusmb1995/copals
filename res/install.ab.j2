@@ -1,0 +1,19 @@
+// Each hook must be IDEMPOTENT and KILL THE PROGRAM on failure.
+// Inside the hook, propagate failures with ? via a *_impl(): Null? helper, then
+// wrap it once at the installer level:  install_x() { x_impl() failed { exit(1) } }
+// So every install_*() is infallible and main() stays a plain sequence of calls.
+
+{% for repo in repositories %}
+{% if repo.enabled %}
+import { install_{{ repo.id }} } from "{{ repo.id }}.ab"
+{% endif %}
+{% endfor %}
+
+main(_) {
+{% for repo in repositories %}
+{% if repo.enabled %}
+    install_{{ repo.id }}()
+{% endif %}
+{% endfor %}
+}
+// TODO shards at runtime here, help or unknown prints all available

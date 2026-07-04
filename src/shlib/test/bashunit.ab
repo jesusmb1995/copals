@@ -1,0 +1,118 @@
+import { has_cmd, which_cmd } from "../cmd.ab"
+import { bool_to_str } from "../bool.ab"
+import { home } from "../env.ab"
+import { abspath, filename, realpath_or_empty } from "../fs.ab"
+
+// returns true if passes assert
+pub fun assert_true(bool: Bool): Bool {
+    const val_str = bool_to_str(bool)
+    trust $ assert_true {val_str} $
+    return bool
+}
+
+// returns true if passes assert
+pub fun assert_false(bool: Bool): Bool {
+    const val_str = bool_to_str(bool)
+    trust $ assert_false {val_str} $
+    return not bool
+}
+
+pub fun assert_file_exists(path: Text) {
+    trust $ assert_file_exists "{path}" $
+}
+
+pub fun assert_file_at_home_exists(rel_path: Text) {
+    assert_file_exists(trust $ echo ~ $ + "/{rel_path}")
+}
+
+pub fun assert_directory_exists(path: Text) {
+    trust $ assert_directory_exists "{path}" $
+}
+
+pub fun assert_directory_at_home_exists(rel_path: Text) {
+    assert_directory_exists(trust $ echo ~ $ + "/{rel_path}")
+}
+
+pub fun assert_has_cmd(cmd: Text) {
+    assert_true(has_cmd(cmd))
+}
+
+pub fun assert_cmd_runs(cmd: Text) {
+    let ok = false
+    $ {cmd} >/dev/null 2>&1 $ succeeded {
+        ok = true
+    }
+    assert_true(ok)
+}
+
+pub fun assert_has_cmd_with_version(cmd: Text) {
+    assert_has_cmd(cmd)
+    assert_cmd_runs("{cmd} --version")
+}
+
+pub fun assert_contains(text: Text, substring: Text) {
+    trust $ assert_contains "{text}" "{substring}" $
+}
+
+pub fun assert_not_contains(text: Text, substring: Text) {
+    trust $ assert_not_contains "{text}" "{substring}" $
+}
+
+pub fun assert_not_empty(text: Text) {
+    trust $ assert_not_empty "{text}" $
+}
+
+pub fun assert_same(expected: Text, actual: Text) {
+    trust $ assert_same "{expected}" "{actual}" $
+}
+
+pub fun assert_matches(text: Text, pattern: Text) {
+    trust $ assert_matches "{text}" "{pattern}" $
+}
+
+pub fun assert_file_matches(file: Text, pattern: Text) {
+    trust $ grep -Eq "{pattern}" "{file}" && assert_true true || assert_false "{file} does not match /{pattern}/" $
+}
+
+pub fun assert_file_not_contains(file: Text, substring: Text) {
+    trust $ grep -Fq "{substring}" "{file}" 2>/dev/null && assert_false "{file} unexpectedly contains '{substring}'" || assert_true true $
+}
+
+pub fun assert_is_executable(path: Text) {
+    trust $ test -x "{path}" && assert_true true || assert_false "{path} is not executable" $
+}
+
+pub fun skip_test(reason: Text) {
+    trust $ echo "SKIP: {reason}" >&2 $
+    trust $ bashunit::state::add_assertions_skipped $
+}
+
+pub fun assert_symlink_exists(path: Text) {
+    trust $ test -L "{path}" && assert_true true || assert_false "{path} is not a symlink" $
+}
+
+pub fun assert_symlink_at_home_exists(rel_path: Text) {
+    assert_symlink_exists(trust $ echo ~ $ + "/{rel_path}")
+}
+
+pub fun assert_symlinks_resolve_to_same(path1: Text, path2: Text) {
+    let failed_abspath = false
+    const abspath1 = abspath(path1) failed { failed_abspath = true }
+    const abspath2 = abspath(path2) failed { failed_abspath = true }
+    if assert_false(failed_abspath) {
+        assert_same(abspath1, abspath2)
+    }
+}
+
+pub fun assert_which_name(cmd: Text, expected: Text): Null {
+    const resolved = which_cmd(cmd) failed {
+        trust $ assert_false "{cmd} not found on PATH" $
+        return null
+    }
+    const name = filename(realpath_or_empty(resolved))
+    if name == expected {
+        assert_true(true)
+    } else {
+        trust $ assert_false "{cmd} resolves to '{name}', not '{expected}'" $
+    }
+}

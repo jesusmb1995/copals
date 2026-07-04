@@ -1,0 +1,17 @@
+import { home } from "../env.ab"
+import { file_exists } from "std/fs"
+import { echo_error } from "std/env"
+
+fun setup_global_gitignore(): Null? {
+    const h = home()?
+    if not file_exists("{h}/.gitignore_global") {
+        fail 1
+    }
+    $ git config --global core.excludesFile {h}/.gitignore_global $ ?
+}
+
+pub fun setup_global_gitignore_or_die() {
+    setup_global_gitignore() failed {
+        echo_error("failed to setup global gitignore")
+    }
+}

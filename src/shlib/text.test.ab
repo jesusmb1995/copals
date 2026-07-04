@@ -1,0 +1,26 @@
+import { assert_eq } from "std/test"
+import { lower, upper } from "text.ab"
+
+test "lower: converts uppercase to lowercase" {
+    assert_eq(lower("HELLO")?, "hello")
+}
+
+test "lower: leaves lowercase unchanged" {
+    assert_eq(lower("hello")?, "hello")
+}
+
+test "lower: handles mixed case" {
+    assert_eq(lower("Hello World")?, "hello world")
+}
+
+test "upper: converts lowercase to uppercase" {
+    assert_eq(upper("hello")?, "HELLO")
+}
+
+test "upper: leaves uppercase unchanged" {
+    assert_eq(upper("HELLO")?, "HELLO")
+}
+
+test "upper: handles mixed case" {
+    assert_eq(upper("Hello World")?, "HELLO WORLD")
+}

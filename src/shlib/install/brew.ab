@@ -1,0 +1,80 @@
+// TODO cleanup this file... too bashish
+import { echo_error } from "std/env"
+import { file_write, file_exists } from "std/fs"
+import { home } from "../env.ab"
+import { temp_file_create } from "../temp.ab"
+import { has_cmd } from "../cmd.ab"
+import { install_via_curl } from "./curl.ab"
+
+// Source brew's shellenv so `brew` is on PATH after a same-session install.
+fun brew_on_path(): Null? {
+    const h = home()?
+    const system_brew = "/home/linuxbrew/.linuxbrew/bin/brew"
+    const user_brew = "{h}/.linuxbrew/bin/brew"
+    let cand = ""
+    $ [ -x {system_brew} ] $ succeeded {
+        cand = system_brew
+    }
+    if cand == "" {
+        $ [ -x {user_brew} ] $ succeeded {
+            cand = user_brew
+        }
+    }
+    if cand == "" {
+        fail status()
+    }
+    const env_script = $ {cand} shellenv $ ?
+    const tmp = temp_file_create()?
+    file_write(tmp, env_script)?
+    $ . {tmp} $ ?
+    rm(tmp)?
+}
+
+fun persist_brew_on_profile(): Null? {
+    const h = home()?
+    const cand = "/home/linuxbrew/.linuxbrew/bin/brew"
+    const profile = "{h}/.profile"
+    const brew_eval = "eval \"$({cand} shellenv)\""
+    if not file_exists(profile) {
+        $ touch {profile} $ ?
+    }
+    $ grep -qF {brew_eval} {profile} 2>/dev/null $ failed {
+        $ echo >> {profile} $ ?
+        $ echo {brew_eval} >> {profile} $ ?
+    }
+}
+
+// On container overlay filesystems brew lock filenames can exceed NAME_MAX;
+// symlink the locks dir to /tmp to keep them short.
+fun fix_lock_dir(): Null? {
+    const root = "/home/linuxbrew/.linuxbrew"
+    $ [ -d {root} ] $ succeeded {
+        const locks_dir = "{root}/var/homebrew/locks"
+        const locks_parent = "{root}/var/homebrew"
+        $ mkdir -p -m 777 /tmp/brew-locks $ ?
+        $ [ -d {locks_dir} ] && [ ! -L {locks_dir} ] $ succeeded {
+            $ rm -rf {locks_dir} $ failed { return null }
+            $ ln -sf /tmp/brew-locks {locks_dir} $ failed { return null }
+        }
+        $ [ ! -e {locks_dir} ] $ succeeded {
+            $ mkdir -p {locks_parent} $ ?
+            $ ln -sf /tmp/brew-locks {locks_dir} $ failed { return null }
+        }
+    }
+}
+
+pub fun brew_install(packages: [Text]): Null? {
+    brew_on_path() failed {
+        install_via_curl("https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh")?
+        brew_on_path()?
+        persist_brew_on_profile()?
+    }
+    fix_lock_dir()?
+    $ echo y | HOMEBREW_NO_INTERACTIVE=1 HOMEBREW_NO_ENV_HINTS=1 brew install {packages} $ ?
+}
+
+pub fun brew_install_or_die(packages: [Text]) {
+    brew_install(packages) failed {
+        echo_error("failed to brew install {packages}")
+    }
+}

@@ -1,0 +1,17 @@
+import * from "shlib/test/bashunit.ab"
+
+pub fun test_cp_marker_exists() {
+    assert_file_at_home_exists(".cache/pipeline-cp-dir/copied.txt")
+}
+
+pub fun test_symlink_exists() {
+    assert_symlink_at_home_exists(".cache/pipeline-symlink-dir")
+}
+
+pub fun test_rsync_directory_exists() {
+    assert_directory_at_home_exists(".cache/pipeline-rsync-dir")
+}
+
+pub fun test_rsync_file_inside() {
+    assert_file_at_home_exists(".cache/pipeline-rsync-dir/rsynced.txt")
+}

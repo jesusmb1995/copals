@@ -1,0 +1,24 @@
+import { home } from "env.ab"
+import { env_var_get } from "std/env"
+import { dir_create } from "std/fs"
+
+pub fun default_cache_dir(): Text? {
+    const home = home()?
+    return "{home}/.cache"
+}
+
+pub fun get_cache_dir(sub_folder: Text): Text? {
+    let cache_dir = ""
+    const xdg_cache = env_var_get("XDG_CACHE_HOME") failed {
+        cache_dir = default_cache_dir()?
+    }
+    if xdg_cache == "" {
+        cache_dir = default_cache_dir()?
+    } else {
+        cache_dir = xdg_cache
+    }
+    const target_cache = "{cache_dir}/{sub_folder}"
+    dir_create(target_cache)?
+    return target_cache 
+}
+

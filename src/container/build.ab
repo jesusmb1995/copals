@@ -1,0 +1,68 @@
+import { RESOURCES_DIR } from "../vars.ab"
+import { json_value } from "../shlib/json.ab"
+import { basename } from "../shlib/basename.ab"
+import { lower, sanitize_tag } from "../shlib/text.ab"
+import { build_image, image_exists, update_container } from "../shlib/container.ab"
+import { echo_success, echo_warning } from "std/env"
+
+const fast_tag = "copals-apt-fast-base:latest"
+
+fun build_base(user_base: Text, container_runtime: Text): Bool? {
+    // TODO REVIEW: should be based on regex builtin... or extension of it shlib/regex.ab
+    $ echo {user_base} | grep -Fq "debian:testing" $ failed {
+        echo_warning("build_base: '{user_base}' is not based on debian:testing — skipping optimized base")
+        return false
+    }
+    if not image_exists(fast_tag, container_runtime) {
+        const build_args = [
+            "BASE={user_base}"
+        ]
+        build_image("{RESOURCES_DIR}/copals_apt_fast_base.Dockerfile", fast_tag, RESOURCES_DIR, build_args, container_runtime, ["{RESOURCES_DIR}/gen-apt-wrapper.sh"])?
+    }
+    return true
+}
+
+fun build_container_with_bundle(
+    base: Text,
+    copals_bundle: Text,
+    reuse: Bool = false,
+    tag: Text = "",
+    container_runtime: Text = "podman"
+): Text? {
+    const bundle_name = basename(copals_bundle)?
+    let image_tag = "{sanitize_tag(lower(bundle_name)?)}:latest"
+    if tag != "" {
+        image_tag = tag
+    }
+
+    if reuse and image_exists(image_tag, container_runtime) {
+        const mounts = [
+            "type=tmpfs,target=/tmp/brew-locks"
+        ]
+        const cp_srcs = [copals_bundle]
+        const cp_dsts = ["/home/user/{bundle_name}"]
+        update_container(image_tag, "chown -R root:root /home/user/.homebrew 2>/dev/null; cd /home/user/{bundle_name} && ./install.sh", container_runtime, mounts, "0", cp_srcs, cp_dsts)?
+        return image_tag
+    }
+
+    // Try to use optimized debian testing image if possible to speed up things
+    let use_base = base
+    const using_copals_base = build_base(base, container_runtime)?
+    if using_copals_base {
+        use_base = fast_tag
+    }
+
+    const build_args = [
+        "BASE={use_base}",
+        "DEPLOYABLE_COPALS_BUNDLE={bundle_name}"
+    ]
+    build_image("{RESOURCES_DIR}/deploy_bundle.Dockerfile", image_tag, copals_bundle, build_args, container_runtime)?
+    return image_tag
+}
+
+pub fun build_container_from_bundle(bundle_dir: Text, reuse: Bool, tag: Text = ""): Text? {
+    const base = json_value("{bundle_dir}/meta.json", "base_image")?
+    const image_tag = build_container_with_bundle(base, bundle_dir, reuse, tag)?
+    echo_success("image ready: {image_tag}")
+    return image_tag
+}

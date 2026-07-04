@@ -1,0 +1,22 @@
+import { assert_eq } from "std/test"
+import { has_flag, flag_value } from "flag.ab"
+
+test "has_flag: finds flag that is present" {
+    const args = ["build", "/path/to/bundle", "--reuse"]
+    assert_eq(has_flag(args, "--reuse"), true)
+}
+
+test "has_flag: returns false when flag is absent" {
+    const args = ["build", "/path/to/bundle"]
+    assert_eq(has_flag(args, "--reuse"), false)
+}
+
+test "flag_value: returns value after flag" {
+    const args = ["launch", "image:tag", "--home", "/tmp/home"]
+    assert_eq(flag_value(args, "--home"), "/tmp/home")
+}
+
+test "flag_value: returns empty when flag absent" {
+    const args = ["launch", "image:tag"]
+    assert_eq(flag_value(args, "--home"), "")
+}

@@ -1,0 +1,81 @@
+import { dir_create } from "std/fs"
+import { jsonnet_render_tla_file } from "shlib/jsonnet.ab"
+import { RESOURCES_DIR } from "vars.ab"
+import { JQ } from "shlib/vendor.ab"
+import { main_generate, resolve_config_path } from "gen/generate.ab"
+import { build_image } from "shlib/container.ab"
+import { build_container_from_bundle } from "container/build.ab"
+import { build_and_run_test_container } from "container/test.ab"
+import { get_cache_dir } from "shlib/cache.ab"
+import { sanitize_tag } from "shlib/text.ab"
+import { join, split_lines } from "std/text"
+import { basename } from "shlib/basename.ab"
+import { abspath } from "shlib/fs.ab"
+import { json_value_or } from "shlib/json.ab"
+import { echo_error } from "std/env"
+
+const DEPLOY_BUNDLE_DOCKERFILE = "{RESOURCES_DIR}/deploy_bundle.Dockerfile"
+
+pub fun shard(user_dir: Text, jsonnet_config: Text, ids: [Text]): Null? {
+    const cache_dir = get_cache_dir("copals/shard")?
+    const ids_csv = join(ids, ",")
+    const shard_name = "shard-{join(ids, "-")}"
+    const shard_bundle = "{cache_dir}/{shard_name}"
+
+    const resolved_config = resolve_config_path(user_dir, jsonnet_config)?
+    const filtered_json = jsonnet_render_tla_file(
+        "{RESOURCES_DIR}/shard.jsonnet",
+        "user_config",
+        resolved_config,
+        "shard_ids={ids_csv}"
+    )?
+
+    dir_create(shard_bundle)?
+    main_generate([user_dir, filtered_json, shard_bundle])?
+
+    const enabled_ids = split_lines(
+        $ {JQ} -r '.repositories[] | select(.enabled == true) | .id' {filtered_json} $ ?)
+
+    const base_image = json_value_or(filtered_json, "base_image", "")?
+    if base_image == "" {
+        echo("shard: base_image not configured in {jsonnet_config}")
+        fail 1
+    }
+
+    let current_base = base_image
+    let built_ids = []
+    for id in ids {
+        echo("Building dep layer: {id}")
+        built_ids += [id]
+        const dep_config = jsonnet_render_tla_file(
+            "{RESOURCES_DIR}/shard.jsonnet",
+            "user_config",
+            resolved_config,
+            "shard_ids={id}"
+        )?
+        const dep_bundle = "{cache_dir}/dep-{id}"
+        dir_create(dep_bundle)?
+        main_generate([user_dir, dep_config, dep_bundle])?
+
+        const bundle_name = basename(dep_bundle)?
+        const dep_tag = "{sanitize_tag(join(built_ids, "-"))}:latest"
+        const build_args = [
+            "BASE={current_base}",
+            "DEPLOYABLE_COPALS_BUNDLE={bundle_name}",
+            "USERNAME=user"
+        ]
+        build_image(DEPLOY_BUNDLE_DOCKERFILE, dep_tag, dep_bundle, build_args)?
+        current_base = dep_tag
+    }
+
+    const shard_tag = build_container_from_bundle(shard_bundle, false)?
+    build_and_run_test_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, shard_tag)?
+}
+
+pub fun shard_main(args: [Text]): Null? {
+    if len(args) < 3 {
+        echo_error("shard: missing <user_dir> <jsonnet config> <id> [<id>...]")
+        fail 1
+    }
+    shard(args[0], args[1], args[2..len(args)])?
+}

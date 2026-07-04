@@ -1,0 +1,10 @@
+import { assert_eq } from "std/test"
+import { bool_to_str } from "bool.ab"
+
+test "bool_to_str: true becomes true" {
+    assert_eq(bool_to_str(true), "true")
+}
+
+test "bool_to_str: false becomes false" {
+    assert_eq(bool_to_str(false), "false")
+}

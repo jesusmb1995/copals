@@ -1,0 +1,39 @@
+import { run_lib_tests } from "lib.ab"
+import { run_check } from "check.ab"
+import { run_smoke_lib_tests, run_smoke_integration_test } from "smoke.ab"
+import { run_pipeline_integration_test } from "integration.ab"
+import { echo_error } from "std/env"
+import { SHLIB_DIR, GEN_DIR } from "../src/vars.ab"
+
+fun print_usage(): Null {
+    echo("Usage: test [type]")
+    echo("Types: check, lib (default), smoke, integration, pipeline, all")
+}
+
+main(args) {
+    const default_dirs = [SHLIB_DIR, GEN_DIR]
+    let type = "lib"
+    if len(args) > 1 {
+        type = args[1]
+    }
+    if {
+        type == "check": run_check(default_dirs)?
+        type == "lib": run_lib_tests([SHLIB_DIR])?
+        type == "smoke": { 
+            run_smoke_lib_tests()?
+            run_smoke_integration_test()?
+        }
+        type == "integration": run_pipeline_integration_test()?
+        type == "all": {
+            run_check(default_dirs)?
+            run_lib_tests([SHLIB_DIR])?
+            run_smoke_integration_test()?
+            run_pipeline_integration_test()?
+        }
+        else: {
+            echo_error("Unknown test type: {type}")
+            print_usage()
+            fail 1
+        }
+    }
+}

@@ -1,0 +1,11 @@
+import { dir_exists } from "std/fs"
+
+pub fun symlink_create_dir(origin: Text, destination: Text): Null? {
+    if not dir_exists(origin) {
+        echo("The directory {origin} doesn't exist")
+        fail 1
+    }
+    $ ln -fs {origin} {destination} $ ?
+}
+
+// TODO test this

@@ -1,0 +1,36 @@
+import * from "shlib/test/bashunit.ab"
+import { screenshot_available, xvfb_start, xvfb_stop, capture, window_wait, run_scenario, golden_path, log } from "shlib/test/screenshot.ab"
+import { file_exists } from "std/fs"
+
+pub fun test_xterm_screenshot_matches_golden() {
+    // trust $ set -x $
+    const required = ["xdotool", "xterm"]
+    if not screenshot_available(required) {
+        log("SKIP: screenshot tools unavailable (required: {required})")
+        skip_test("screenshot tools unavailable")
+    } else {
+        const golden = golden_path("pipeline_xterm")
+        if not file_exists(golden) {
+            xvfb_start()
+            trust $ DISPLAY=:99 xterm -hold -e 'echo screenshot test' </dev/null >/dev/null 2>&1 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- & $
+            const found = window_wait(":99", "xterm", 10)
+            if found { trust $ sleep 2 $ }
+            capture("pipeline_xterm")
+            trust $ pkill xterm 2>/dev/null || true $
+            xvfb_stop()
+            log("FAIL: golden missing at {golden}")
+            log("  To create golden: cp .generated/pipeline_xterm.ref.png golden/")
+            trust $ assert_false true $
+        } else {
+            run_scenario(
+                "pipeline_xterm",
+                ["xdotool", "xterm"],
+                "xterm -hold -e 'echo screenshot test' >/dev/null 2>&1 &",
+                "xterm",
+                2,
+                500000,
+                ["xterm"]
+            )
+        }
+    }
+}

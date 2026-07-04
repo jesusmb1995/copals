@@ -1,0 +1,77 @@
+import { temp_dir_create } from "std/fs"
+
+pub fun build_image(dockerfile: Text, tag: Text, context: Text, build_args: [Text] = [], runtime: Text = "podman", cps: [Text] = [""]): Text? {
+    const ctx = temp_dir_create("build-ctx.XXXXXX")?
+    $ rsync -a --delete "{context}" "{ctx}/" $ ?
+    cp(dockerfile, "{ctx}/Dockerfile")?
+
+    const is_dummy = len(cps) == 1 and cps[0] == ""
+    if len(cps) > 1 or not is_dummy {
+        for f in cps {
+            cp(f, "{ctx}/")?
+        }
+    }
+
+    let all_args = ["-t", tag, "-f", "{ctx}/Dockerfile"]
+    for a in build_args {
+        all_args = all_args + ["--build-arg", a]
+    }
+    all_args = all_args + [ctx]
+
+    $ {runtime} build {all_args} $ ?
+    return tag
+}
+
+pub fun image_exists(tag: Text, runtime: Text): Bool {
+    $ {runtime} image exists {tag} $ succeeded { return true }
+    return false
+}
+
+pub fun remove_image(tag: Text, runtime: Text = "podman"): Null {
+    $ {runtime} image rm -f {tag} $ failed {
+        // ignore — image may not exist
+    }
+}
+
+pub fun ensure_stop(tag: Text, runtime: Text): Null? {
+    const running_ctr = $ {runtime} ps -q --filter "ancestor={tag}" --filter "status=running" $ ?
+    if running_ctr != "" {
+        echo("stopped {running_ctr}")
+        $ {runtime} stop -t 0 {running_ctr} $ ?
+    }
+}
+
+pub fun update_container(
+    tag: Text,
+    cmd: Text = "",
+    runtime: Text = "podman",
+    mount_args: [Text] = [],
+    user: Text = "0",
+    cp_srcs: [Text] = [],
+    cp_dsts: [Text] = []
+): Text? {
+    if not image_exists(tag, runtime) {
+       fail 1
+    }
+    ensure_stop(tag, runtime)?
+    let mount_flags = ""
+    for m in mount_args {
+        mount_flags = "{mount_flags} --mount={m}"
+    }
+    const ctr = $ {runtime} run -d --rm --user={user} {mount_flags} {tag} sleep infinity $ ?
+    if(len(cp_srcs) != len(cp_dsts)) {
+        fail 1
+    }
+        
+    let i = 0
+    while i < len(cp_srcs) {
+        $ {runtime} exec --user={user} {ctr} mkdir -p "{cp_dsts[i]}" $ ?
+        $ {runtime} cp "{cp_srcs[i]}"/. {ctr}:"{cp_dsts[i]}" $ ?
+        i += 1
+    }
+
+    if cmd != "" {
+        $ {runtime} exec --user={user} {ctr} bash -lc "{cmd}" $ ?
+    }
+    return $ {runtime} commit {ctr} {tag} $ ?
+}

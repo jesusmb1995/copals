@@ -1,0 +1,21 @@
+import { assert_eq } from "std/test"
+import { replace_regex } from "std/text"
+
+pub fun get_match_regex_sandwich(in_txt: Text, left_rgx: Text, mid_rgx: Text, right_rgx: Text): Text? {
+    // No direct regext matching in Amber yet v.6 
+    // workaround by replacing all the rest
+    const matched = replace_regex(in_txt, "({left_rgx})({mid_rgx})({right_rgx})", "\\2", true)
+    if matched == "" {
+        echo("get_match_regex_sandwich: empty match")
+        fail
+    }
+    return matched
+}
+
+pub fun get_filename_without_prefix(prefix: Text, path: Text): Text? {
+    return get_match_regex_sandwich(path, ".*{prefix}", "[^.]*", "\\..*")?
+}
+
+// TODO move to test.ab
+// Tests removed to avoid duplicate registration when regex.ab is imported
+// through multiple paths (e.g. generate.ab imported by both copals.ab and shard/shard.ab).

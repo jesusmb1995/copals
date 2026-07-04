@@ -1,0 +1,31 @@
+import { assert_eq } from "std/test"
+import { execute_sh } from "sh.ab"
+import { temp_file_create } from "temp.ab"
+import { file_write, file_read } from "std/fs"
+import { has_cmd } from "cmd.ab"
+import { echo_warning } from "std/env"
+
+test "execute_sh: runs bash script successfully" {
+    if not has_cmd("bash") {
+        echo_warning("bash not available, skipping test")
+    } else {
+        const script = temp_file_create("-test.sh")?
+        file_write(script, "#!/usr/bin/env bash\necho hello")?
+        
+        execute_sh(script)?
+    }
+}
+
+test "execute_sh: script can create output file" {
+    if not has_cmd("bash") {
+        echo_warning("bash not available, skipping test")
+    } else {
+        const script = temp_file_create("-test2.sh")?
+        const out = temp_file_create("-out.txt")?
+        file_write(script, "#!/usr/bin/env bash\nprintf world > {out}")?
+        
+        execute_sh(script)?
+        
+        assert_eq(file_read(out)?, "world")
+    }
+}

@@ -1,0 +1,62 @@
+import { assert_eq } from "std/test"
+import {
+    jsonnet_render,
+    jsonnet_render_file,
+    jsonnet_render_tla,
+    jsonnet_render_tla_file
+} from "jsonnet.ab"
+import { file_write, file_read } from "std/fs"
+import { temp_file_create } from "temp.ab"
+import { has_cmd } from "cmd.ab"
+import { echo_warning } from "std/env"
+
+test "jsonnet: can render simple jsonnet to text" {
+    if not has_cmd("jsonnet") {
+        echo_warning("jsonnet not available, skipping test")
+    } else {
+        const tmp = temp_file_create(".jsonnet")?
+        file_write(tmp, "\{ x: 1 }")?
+        const result = jsonnet_render(tmp)?
+        assert_eq(len(result) > 0, true)
+    }
+}
+
+test "jsonnet: can render simple jsonnet to file" {
+    if not has_cmd("jsonnet") {
+        echo_warning("jsonnet not available, skipping test")
+    } else {
+        const input = temp_file_create(".jsonnet")?
+        file_write(input, "\{ x: 1 }")?
+
+        const output = jsonnet_render_file(input)?
+        const content = file_read(output)?
+        assert_eq(len(content) > 0, true)
+    }
+}
+
+test "jsonnet: can render with single TLA" {
+    if not has_cmd("jsonnet") {
+        echo_warning("jsonnet not available, skipping test")
+    } else {
+        const tmp = temp_file_create(".jsonnet")?
+        file_write(tmp, "function(name) \{ greeting: \"hello \" + name }")?
+
+        const result = jsonnet_render_tla(tmp, "name", "'\"world\"'")?
+        assert_eq(len(result) > 0, true)
+    }
+}
+
+test "jsonnet: can render TLA from file contents" {
+    if not has_cmd("jsonnet") {
+        echo_warning("jsonnet not available, skipping test")
+    } else {
+        const jsonnet_file = temp_file_create(".jsonnet")?
+        const source_file = temp_file_create(".json")?
+        file_write(jsonnet_file, "function(source_jsonnet) source_jsonnet")?
+        file_write(source_file, "\{ greeting: \"hello\" }")?
+
+        const output = jsonnet_render_tla_file(jsonnet_file, "source_jsonnet", source_file)?
+        const content = file_read(output)?
+        assert_eq(len(content) > 0, true)
+    }
+}

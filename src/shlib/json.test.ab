@@ -1,0 +1,54 @@
+import { assert_eq } from "std/test"
+import { to_json_array, json_value, json_value_or } from "json.ab"
+import { temp_file_create } from "temp.ab"
+import { file_write } from "std/fs"
+
+test "json: can generate correct json array" {
+    const my_arr = ["a", "b", "cd"] 
+    const expected = "\{\n  \"repos\": [\n    \"a\",\n    \"b\",\n    \"cd\"\n  ]\n}"
+    const produced = to_json_array("repos", my_arr)?
+    assert_eq(produced, expected)
+}
+
+test "json: can read json value from key" {
+    const tmp = temp_file_create()?
+    const json_content = "\{\"name\": \"test-value\"}"
+    file_write(tmp, json_content)?
+    const result = json_value(tmp, "name")?
+    assert_eq(result, "test-value")
+}
+
+test "json: fails if file does not exist" {
+    let has_failed = false
+    json_value("unexisting.json", "name") failed {
+        has_failed = true
+    }
+    const should_fail = true
+    assert_eq(should_fail, has_failed)
+}
+
+test "json: fails if key does not exist" {
+    const tmp = temp_file_create()?
+    const json_content = "\{\"name\": \"test-value\"}"
+    file_write(tmp, json_content)?
+
+    let has_failed = false
+    json_value(tmp, "other-name") failed {
+        has_failed = true
+    }
+
+    const should_fail = true
+    assert_eq(should_fail, has_failed)
+}
+
+test "json_value_or: returns value when key present" {
+    const tmp = temp_file_create()?
+    file_write(tmp, "\{\"name\": \"test-value\"}")?
+    assert_eq(json_value_or(tmp, "name", "fallback")?, "test-value")
+}
+
+test "json_value_or: returns default when key missing" {
+    const tmp = temp_file_create()?
+    file_write(tmp, "\{\"name\": \"test-value\"}")?
+    assert_eq(json_value_or(tmp, "absent", "fallback")?, "fallback")
+}

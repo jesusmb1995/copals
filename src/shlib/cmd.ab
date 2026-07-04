@@ -1,0 +1,20 @@
+import { echo_error } from "std/env"
+
+pub fun has_cmd(cmd: Text): Bool {
+    let found = false
+    $ command -v {cmd} >/dev/null 2>&1 $ succeeded {
+        found = true
+    }
+    return found
+}
+
+pub fun which_cmd(cmd: Text): Text? {
+    return $ command -v {cmd} 2>/dev/null $ ?
+}
+
+// echo_error exits the process (default exit_code=1), so no fail needed.
+pub fun require_or_die(cmd: Text): Null {
+    if not has_cmd(cmd) {
+        echo_error("'{cmd}' not found, cannot continue.")
+    }
+}

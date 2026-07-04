@@ -1,0 +1,19 @@
+import { assert_eq } from "std/test"
+import { execute_sh_at_home } from "sh.ab"
+import { temp_file_create } from "../temp.ab"
+import { file_write, file_read, dir_create } from "std/fs"
+import { home } from "../env.ab"
+import { has_cmd } from "../cmd.ab"
+import { echo_warning } from "std/env"
+
+test "execute_sh_at_home: runs script from home" {
+    if not has_cmd("bash") {
+        echo_warning("bash not available, skipping test")
+    } else {
+        const h = home()?
+        dir_create("{h}/.local")?
+        file_write("{h}/.local/test-script.sh", "#!/usr/bin/env bash\necho hello-from-home")?
+        execute_sh_at_home(".local/test-script.sh")?
+        assert_eq(true, true)
+    }
+}

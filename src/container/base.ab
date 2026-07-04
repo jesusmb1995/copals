@@ -1,0 +1,18 @@
+import { RESOURCES_DIR } from "../vars.ab"
+import { echo_warning } from "std/env"
+import { match_regex } from "std/text"
+import { build_image, image_exists } from "../shlib/container.ab"
+
+pub fun build_base(copals_deb_base_dockerfile: Text, copals_tag: Text, user_base: Text, container_runtime: Text, cps: [Text] = [""]): Text? {
+    if not match_regex(user_base, "(.*debian.*testing.*|copals-apt-fast-base)", true) {
+        echo_warning("build_base: '{user_base}' does not match *debian*testing* — skipping optimized base")
+        return user_base
+    }
+    if not image_exists(copals_tag, container_runtime) {
+        const build_args = [
+            "BASE={user_base}"
+        ]
+        build_image("{RESOURCES_DIR}/{copals_deb_base_dockerfile}", copals_tag, RESOURCES_DIR, build_args, container_runtime, cps)?
+    }
+    return copals_tag
+}

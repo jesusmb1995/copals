@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["repositories"],
+  "properties": {
+    "Description": {
+      "type": "string"
+    },
+    "base_image": {
+      "type": "string"
+    },
+    "i3": {
+      "type": "object",
+      "required": ["mode", "launcher"],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "launcher": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ai_tools": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "browsers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "languages": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "system_tools": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "repositories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "url", "target", "enabled", "clone"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "clone": {
+            "type": "boolean"
+          },
+          "inplace": {
+            "type": "boolean"
+          },
+          "impl": {
+            "type": "string"
+          },
+          "impl_variants": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

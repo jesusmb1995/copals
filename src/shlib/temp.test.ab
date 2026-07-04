@@ -1,0 +1,23 @@
+import { assert_eq } from "std/test"
+import { temp_file_create, resolve_output_path } from "temp.ab"
+import { file_write, file_read } from "std/fs"
+import { file_exists } from "std/fs"
+
+test "temp_file_create: creates a file" {
+    const tmp = temp_file_create()?
+    assert_eq(file_exists(tmp), true)
+}
+
+test "temp_file_create: appends suffix" {
+    const tmp = temp_file_create("-test.txt")?
+    assert_eq(tmp != "", true)
+}
+
+test "resolve_output_path: returns given path" {
+    assert_eq(resolve_output_path("/tmp/output.txt")?, "/tmp/output.txt")
+}
+
+test "resolve_output_path: creates temp when empty" {
+    const tmp = resolve_output_path("")?
+    assert_eq(file_exists(tmp), true)
+}

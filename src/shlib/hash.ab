@@ -1,0 +1,46 @@
+import { file_write, dir_exists } from "std/fs"
+
+// TODO: Does it make sense tto rrely on Git instead? e.g. when possible
+// Content hash of a directory tree (excluding .git), stable regardless of where
+// the project is checked out. Empty/missing directories hash to a fixed value.
+pub fun hash_dir(dir_path: Text): Text? {
+    return $ find {dir_path} -path './.git' -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum | sha256sum | cut -d' ' -f1 $ ?
+}
+
+pub fun hash_dir_or_default(dir_path: Text, default_val: Text = ""): Text {
+    if dir_exists(dir_path) {
+        const h = hash_dir(dir_path) failed {
+            return default_val
+        }
+        return h
+    }
+    return default_val
+}
+
+pub fun hash_arr(texts: [Text]): Text? {
+    let all = ""
+    for t in texts {
+        if all != "" { all += "\n" }
+        all += t
+    }
+    return $ echo "{all}" | sha256sum | cut -d' ' -f1 $ ?
+}
+
+// # State files live one-per-component under STATE_DIR. Line 1 is the content hash,
+// line 2 (optional) is the deploy target relative to src.
+pub fun read_state_hash(state_dir: Text, key: Text): Text {
+    const file = "{state_dir}/{key}"
+    return $ sed -n "1p" "{file}" $ failed {
+        return ""
+    }
+}
+
+pub fun read_state_target(state_dir: Text, key: Text): Text? {
+    const file = "{state_dir}/{key}"
+    return $ sed -n "2p" "{file}" $ ?
+}
+
+pub fun write_state(state_dir: Text, key: Text, hash: Text): Null? {
+    dir_create(state_dir)?
+    file_write("{state_dir}/{key}", hash)?
+}

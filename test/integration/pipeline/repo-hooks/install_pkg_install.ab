@@ -1,0 +1,5 @@
+import { apt_install_or_die } from "shlib/install/apt.ab"
+
+pub fun install_pkg_install() {
+    apt_install_or_die(["tree", "rsync", "xterm"])
+}

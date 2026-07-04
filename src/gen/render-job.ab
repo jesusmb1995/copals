@@ -1,0 +1,20 @@
+#!/usr/bin/env amber
+
+import { prepare_for_file_transform } from "file-job.ab"
+import { log_genstep } from "log_genstep.ab"
+import { J2 } from "../shlib/vendor.ab"
+
+pub fun render_j2_template(template: Text, config_file: Text, output_path: Text): Null? {
+    $ {J2} -f json {template} {config_file} -o {output_path} $ ?
+    rm(template)?
+}
+
+fun render_jinja_job(template: Text, tree_dir: Text, config_file: Text, out_dir: Text): Null? {
+    const output_file = prepare_for_file_transform(tree_dir, template, out_dir, "j2")?
+    render_j2_template(template, config_file, output_file)?
+    log_genstep("rendered", output_file)
+}
+
+main(args) {
+    render_jinja_job(args[1], args[2], args[3], args[4])?
+}

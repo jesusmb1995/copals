@@ -1,0 +1,15 @@
+import { echo_error } from "std/env"
+import { dir_create } from "std/fs"
+import { fetch_zip } from "../archive.ab"
+
+pub fun fetch_zip_and_deploy(url: Text, cache_dir: Text, marker: Text, target: Text) {
+    fetch_zip(url, cache_dir, marker)? 
+    dir_create(target)?
+    cp("{cache_dir}/.", target, true)?
+}
+
+pub fun fetch_zip_and_deploy_or_die(url: Text, cache_dir: Text, marker: Text, target: Text) {
+    fetch_zip_and_deploy(url, cache_dir, marker, target) failed    {
+        echo_error("failed to fetch {url} into {target}")
+    }
+}

@@ -1,0 +1,13 @@
+import { replace_regex } from "std/text"
+
+pub fun lower(s: Text): Text? {
+    return $ echo {s} | tr '[:upper:]' '[:lower:]' $ ?
+}
+
+pub fun upper(s: Text): Text? {
+    return $ echo {s} | tr '[:lower:]' '[:upper:]' $ ?
+}
+
+pub fun sanitize_tag(name: Text): Text {
+    return replace_regex(replace_regex(name, "[^a-z0-9_.-]", "-"), "--+", "-")
+}

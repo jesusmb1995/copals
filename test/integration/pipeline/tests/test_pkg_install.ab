@@ -1,0 +1,5 @@
+import * from "shlib/test/bashunit.ab"
+
+pub fun test_tree_available() {
+    assert_has_cmd_with_version("tree")
+}

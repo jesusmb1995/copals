@@ -1,0 +1,25 @@
+import { echo_error } from "std/env"
+import { dir_create } from "std/fs"
+import { home } from "../env.ab"
+import { rsync } from "../rsync.ab"
+
+pub fun rsync_into_home(src: Text, rel_target: Text): Null? {
+    const delete = false;
+    const excludes = []
+    const h = home()?
+    const target = "{h}/{rel_target}"
+    dir_create(target)?
+    rsync(src, target, excludes, delete)?
+}
+
+pub fun rsync_or_die_into_home(src: Text, rel_target: Text) {
+    rsync_into_home(src, rel_target) failed {
+        echo_error("rsync deploy of {src} into {rel_target} failed")
+    }
+}
+
+pub fun rsync_or_die_opts(src: Text, target: Text, excludes: [Text], delete: Bool) {
+    rsync(src, target, excludes, delete) failed {
+        echo_error("rsync deploy of {src} into {target} failed")
+    }
+}

@@ -1,0 +1,5 @@
+import { cp_or_die } from "shlib/install/cp.ab"
+
+pub fun install_smoke() {
+    cp_or_die("src/smoke/smoke-marker.txt", "/tmp/smoke-integration-marker.txt")
+}

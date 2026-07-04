@@ -1,0 +1,36 @@
+import { echo_error } from "std/env"
+import { download_tmp } from "../fetch.ab"
+import { install_deb } from "./deb.ab"
+import { JQ } from "../vendor.ab"
+
+fun tag_verified(repo: Text, tag: Text): Bool? {
+    const ref_url = "https://api.github.com/repos/{repo}/git/ref/tags/{tag}"
+    const ref_data = download_tmp(ref_url)?
+    const obj_type = $ {JQ} -r .object.type {ref_data} $ ?
+    if obj_type != "tag" {
+        return true
+    }
+    const sha = $ {JQ} -r .object.sha {ref_data} $ ?
+    const tag_url = "https://api.github.com/repos/{repo}/git/tags/{sha}"
+    const verified = $ curl -fsSL {tag_url} | {JQ} -r .verification.verified $ ?
+    return verified == "true"
+}
+
+pub fun install_github_deb(repo: Text, asset_suffix: Text): Text? {
+    const api = "https://api.github.com/repos/{repo}/releases/latest"
+    const rel = download_tmp(api)?
+    const url = $ {JQ} -r '.assets[] | select(.name | endswith("{asset_suffix}")) | .browser_download_url' {rel} $ ?
+    const tag = $ {JQ} -r .tag_name {rel} $ ?
+    if not tag_verified(repo, tag)? {
+        fail
+    }
+    const deb = download_tmp(url)?
+    install_deb(deb)?
+    return url
+}
+
+pub fun install_github_deb_or_die(repo: Text, asset_suffix: Text) {
+    install_github_deb(repo, asset_suffix) failed {
+        echo_error("failed to install {asset_suffix} from {repo}")
+    }
+}

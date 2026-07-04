@@ -1,0 +1,10 @@
+import { assert_eq } from "std/test"
+import { basename } from "basename.ab"
+
+test "basename: extracts filename from path" {
+    assert_eq(basename("/path/to/file.txt"), "file.txt")
+}
+
+test "basename: handles trailing slash" {
+    assert_eq(basename("/path/to/dir/"), "dir")
+}

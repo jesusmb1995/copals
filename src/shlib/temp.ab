@@ -1,0 +1,45 @@
+import { file_read, file_write, temp_dir_create } from "std/fs"
+
+const TMP_DIR = temp_dir_create("amber-XXXXXX", true, true) failed {
+    "/tmp"
+}
+
+let token = 1
+
+pub fun temp_file_create(suffix: Text = ""): Text? {
+    token += 1 
+    const tmp = "{TMP_DIR}/{token}{suffix}"
+    touch(tmp)?
+    return tmp
+}
+
+pub fun resolve_output_path(output_path: Text = ""): Text? {
+    if output_path != "" {
+        return output_path
+    }
+    return temp_file_create()?
+}
+
+
+
+//  Works differently on amber
+//pub fun filename(): Text? {
+//    return $ realpath \$BASH_SOURCE[0] $?
+//}
+//
+//pub fun script_dir(): Text? {
+//    const fn = filename()? 
+//    return $ dirname {fn} $ ?
+//}
+//
+//const fn = trust filename()
+//const dir = trust script_dir()
+//echo("The absolute path to this script is {fn}, dir {dir}")
+
+
+//// direct lines compiler bug in .6 workaround by writing to temp file
+//pub fun lines_from_raw(raw: Text): [Text]? {
+//    const tmp = temp_file_create()?
+//    file_write(raw, tmp)?
+//    return lines(file_read(tmp)?)?  
+//}

@@ -1,0 +1,29 @@
+import { home } from "../env.ab"
+import { dir_create } from "std/fs"
+import { echo_error, echo_success } from "std/env"
+import { symlink_create_dir } from "../symlink.ab"
+
+fun _parent_dir(path: Text): Text? {
+    const parent = $ dirname {path} $?
+    return parent
+}
+
+pub fun symlink_into_home(src: Text, rel_dest: Text): Text? {
+    const home = home()?
+    const dest = "{home}/{rel_dest}"
+
+    const parent = _parent_dir(dest)?
+    dir_create(parent)?
+
+    const abs_src = $ readlink -f {src} $?
+    symlink_create_dir(abs_src, dest)?
+
+    return dest
+}
+
+pub fun symlink_into_home_or_die(src: Text, rel_dest: Text): Text {
+    const dest = symlink_into_home(src, rel_dest) failed {
+        echo_error("deploy of {src} symlink {rel_dest}  into home failed")
+    }
+    return dest
+}

@@ -1,0 +1,14 @@
+import { download_to } from "../fetch.ab"
+import { echo_error } from "std/env"
+import { env_vars_get } from "env.ab"
+
+pub fun download_to_target_env(url: Text): Null? {
+    const [target_path] = env_vars_get(["TARGET_PATH"])?
+    download_to(url, target_path)?
+}
+
+pub fun download_to_target_env_or_die(url: Text) {
+    download_to_target_env(url) failed {
+        echo_error("failed to download {url}")
+    }
+}

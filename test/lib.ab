@@ -1,0 +1,43 @@
+import { file_glob, dir_exists } from "std/fs"
+import { echo_error, echo_success, echo_warning } from "std/env"
+import { join } from "std/text"
+import { run_parallel } from "../src/shlib/parallel.ab"
+
+pub fun find_test_files(dirs: [Text]): [Text] {
+    let files = []
+    for d in dirs {
+        if not dir_exists(d) {
+            echo_warning("test dir not found: {d}")
+            continue
+        }
+        files += file_glob("{d}/*.test.ab")
+    }
+    return files
+}
+
+pub fun check_test_files(files: [Text]): Bool {
+    let all_ok = true
+    for f in files {
+        $ amber check {f} $ failed {
+            echo_error("FAIL check: {f}")
+            all_ok = false
+        }
+    }
+    return all_ok
+}
+
+pub fun run_lib_tests(lib_dirs: [Text], max_jobs: Int = 8): Null? {
+    const files = find_test_files(lib_dirs)
+    if len(files) == 0 {
+        echo("No lib test files found in: {join(lib_dirs, ", ")}")
+        return null
+    }
+    echo("Found {len(files)} lib test file(s)")
+    echo("Checking syntax...")
+    if not check_test_files(files) {
+        echo_error("Syntax check failed, aborting")
+        fail 1
+    }
+    echo_success("All syntax checks passed")
+    run_parallel(files, max_jobs, "test")?
+}

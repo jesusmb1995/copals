@@ -1,0 +1,32 @@
+import { has_flag } from "shlib/flag.ab"
+import { main_generate } from "gen/generate.ab"
+import { main_container } from "container/container.ab"
+import { echo_success, echo_error } from "std/env"
+
+pub fun pipeline_main(args: [Text]): Null? {
+    if len(args) < 3 {
+        echo_error("pipeline: missing <user_dir> <jsonnet config> <bundle_dir>")
+        fail 1
+    }
+    const user_dir = args[0]
+    const jsonnet_config = args[1]
+    const bundle_dir = args[2]
+    const force = has_flag(args, "-f") or has_flag(args, "--force")
+    const reuse = has_flag(args, "--reuse")
+
+    let gen_args = [user_dir, jsonnet_config, bundle_dir]
+    if force {
+        gen_args += ["--force"]
+    }
+
+    let build_args = ["build", bundle_dir]
+    if reuse {
+        build_args += ["--reuse"]
+    }
+
+    main_generate(gen_args)?
+    main_container(build_args)?
+    main_container(["test", user_dir, bundle_dir])?
+
+    echo_success("Pipeline finished successfully")
+}

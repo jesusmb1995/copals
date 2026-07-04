@@ -1,0 +1,3 @@
+pub fun basename(path: Text): Text? {
+    return $ basename {path} $ ?
+}

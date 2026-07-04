@@ -1,0 +1,17 @@
+import { echo_error } from "std/env"
+import { has_cmd } from "../cmd.ab"
+import { apt_install } from "./apt.ab"
+import { sudo_cmd } from "../sudo.ab"
+
+pub fun install_via_npm(packages: [Text]): Null? {
+    if not has_cmd("npm") {
+        apt_install(["npm"])?
+    }
+    sudo_cmd("npm install -g {packages}")?
+}
+
+pub fun install_via_npm_or_die(packages: [Text]) {
+    install_via_npm(packages) failed {
+        echo_error("failed to npm install {packages}")
+    }
+}

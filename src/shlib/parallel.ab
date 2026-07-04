@@ -1,0 +1,10 @@
+import { join } from "std/text"
+
+pub fun run_parallel(tasks: [Text], max_jobs: Int, ab_script: Text): Null? {
+    const n_tasks = len(tasks)
+    if n_tasks > 0 {
+        const flattened_tasks = join(tasks, "\n")
+        const n_args = $ echo {tasks[0]} | wc -w $ ?
+        $ echo "{flattened_tasks}" | xargs -P {max_jobs} -n {n_args} amber {ab_script} $ ?
+    }
+}

@@ -1,0 +1,26 @@
+import { echo_error } from "std/env"
+import { download_tmp } from "../fetch.ab"
+import { sudo_cmd } from "../sudo.ab"
+
+pub fun install_deb(deb_path: Text): Null? {
+    sudo_cmd("dpkg -i {deb_path}") failed {
+        // dpkg may fail due to missing deps; fix them below
+    }
+    sudo_cmd("apt-get install -f -y")?
+}
+
+pub fun install_deb_or_die(deb_path: Text) {
+    install_deb(deb_path) failed {
+        echo_error("failed to install {deb_path}")
+    }
+}
+
+pub fun install_deb_url(url: Text): Null? {
+    install_deb(download_tmp(url)?)?
+}
+
+pub fun install_deb_url_or_die(url: Text) {
+    install_deb_url(url) failed {
+        echo_error("failed to install .deb from {url}")
+    }
+}

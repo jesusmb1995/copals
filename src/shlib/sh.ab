@@ -1,0 +1,11 @@
+fun execute(bin: Text, sh_path: Text): Null? {
+    $ {bin} {sh_path} $?
+}
+
+pub fun execute_sh(sh_path: Text): Null? {
+    execute("bash", sh_path)?
+}
+
+pub fun execute_zsh(sh_path: Text): Null? {
+    execute("zsh", sh_path)?
+}

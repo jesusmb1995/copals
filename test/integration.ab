@@ -1,0 +1,39 @@
+import { main_generate } from "../src/gen/generate.ab"
+import { temp_dir_create, file_exists } from "std/fs"
+import { echo_success, echo_error } from "std/env"
+import { build_container_from_bundle } from "../src/container/build.ab"
+import { build_and_run_test_container } from "../src/container/test.ab"
+import { PROJECT_ROOT } from "../src/vars.ab"
+
+// TODO second pass --reuse tested
+// TODO add some files with .j2 for testing
+pub fun run_pipeline_integration_test(): Null? {
+    const pipeline_dir = "{PROJECT_ROOT}/copals/test/integration/pipeline"
+    const config_jsonnet = "{pipeline_dir}/config-presets/pipeline.jsonnet"
+    const bundle_dir = temp_dir_create("pipeline-integration-XXXXXX", true, true)?
+
+    echo("Running pipeline integration test...")
+    echo("  pipeline dir: {pipeline_dir}")
+    echo("  output: {bundle_dir}")
+
+    main_generate([pipeline_dir, config_jsonnet, bundle_dir])?
+
+    const installer = "{bundle_dir}/install.sh"
+    if not file_exists(installer) {
+        echo_error("installer not found at {installer}")
+    }
+    echo_success("bundle generated at {bundle_dir}")
+
+    echo("Building container image from bundle...")
+    build_container_from_bundle(bundle_dir, false)?
+
+    echo("Running container tests...")
+    build_and_run_test_container(
+        bundle_dir,
+        [],
+        "podman",
+        pipeline_dir
+    )?
+
+    echo_success("pipeline integration test passed")
+}

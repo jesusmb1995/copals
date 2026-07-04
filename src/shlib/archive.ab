@@ -1,0 +1,15 @@
+import { file_exists, dir_create } from "std/fs"
+import { download_tmp } from "./fetch.ab"
+
+pub fun unzip(zip_path: Text, dest_dir: Text): Null? {
+    $ unzip -q -o {zip_path} -d {dest_dir} $ ?
+}
+
+pub fun fetch_zip(url: Text, dest_dir: Text, marker: Text): Null? {
+    if not file_exists("{dest_dir}/{marker}") {
+        dir_create(dest_dir)?
+        const zip = download_tmp(url)?
+        unzip(zip, dest_dir)?
+        rm(zip)?
+    }
+}

@@ -1,0 +1,7 @@
+import { copy_into_home_or_die } from "shlib/install/cp.ab"
+import { execute_sh_at_home_or_die } from "shlib/install/sh.ab"
+
+pub fun install_sh_tasks() {
+    copy_into_home_or_die("src/sh-tasks/greet.sh", ".cache/pipeline-sh-tasks")
+    execute_sh_at_home_or_die(".cache/pipeline-sh-tasks/greet.sh")
+}

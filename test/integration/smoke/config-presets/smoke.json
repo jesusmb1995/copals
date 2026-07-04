@@ -1,0 +1,12 @@
+{
+  "repositories": [
+    {
+      "id": "smoke",
+      "name": "smoke test repo",
+      "url": "",
+      "enabled": true,
+      "clone": false,
+      "target": "smoke"
+    }
+  ]
+}

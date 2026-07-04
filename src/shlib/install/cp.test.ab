@@ -1,0 +1,17 @@
+import { assert_eq } from "std/test"
+import { copy_into_home } from "cp.ab"
+import { temp_dir_create, file_write, dir_exists } from "std/fs"
+import { temp_file_create } from "../temp.ab"
+import { has_cmd } from "../cmd.ab"
+import { echo_warning } from "std/env"
+
+test "copy_into_home: copies file into home subdir" {
+    if not has_cmd("cp") {
+        echo_warning("cp not available, skipping test")
+    } else {
+        const src = temp_file_create("-src.txt")?
+        file_write(src, "hello")?
+        const dest = copy_into_home(src, ".local/shared")?
+        assert_eq(dir_exists(dest), true)
+    }
+}

@@ -1,0 +1,15 @@
+import { assert_eq } from "std/test"
+import { get_match_regex_sandwich, get_filename_without_prefix } from "regex.ab"
+
+test "get_match_regex_sandwich: extracts middle match" {
+    const result = get_match_regex_sandwich("prefix123suffix", "prefix", "123", "suffix")?
+    assert_eq(result, "123")
+}
+
+test "get_filename_without_prefix: extracts name without prefix and extension" {
+    let has_failed = false
+    get_filename_without_prefix("prefix_", "prefix_filename.txt") failed {
+        has_failed = true
+    }
+    assert_eq(has_failed, false)
+}

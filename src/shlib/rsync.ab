@@ -1,0 +1,16 @@
+import { join } from "std/text"
+
+pub fun rsync(src: Text, target: Text, excludes: [Text], delete: Bool = true): Null? { 
+    let excludes_arr = []
+    for exclude in excludes {
+        const s = "{exclude}"
+        excludes_arr += ["--exclude", s]
+    }
+
+    let delopt = ""
+    if delete {
+        delopt = "--delete"
+    }
+
+    $ rsync -a {delopt} {excludes_arr} {src} {target} $ ?
+}

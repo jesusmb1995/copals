@@ -1,0 +1,178 @@
+#!/usr/bin/env amber
+// launch_native_i3_vt.ab - Native i3 on a second Xorg / VT (GPU acceleration).
+//
+// Starts a real second Xorg server on a free virtual terminal. Xorg takes DRM
+// master on that VT and drives the GPU directly (radeonsi) -- true native
+// acceleration, unlike Xephyr (software) or a nested wlroots window (denied a
+// GPU context on this host). i3 and the apps run inside a podman container
+// built from <image> (with the deployed dotfiles), the same way as
+// launch_window.ab, but with /dev/dri passed through for GPU access instead of
+// LIBGL_ALWAYS_SOFTWARE. This is a full-screen VT, not a window; launching
+// switches the screen to the new VT.
+//
+// Usage:
+//   launch_native_i3_vt.ab <image[:tag]> [--vt <n>] [--xkb <layout>]
+// Example:
+//   amber launch_native_i3_vt.ab jberlanga-devtools:latest --vt 8
+
+import { echo_error, echo_warning, env_var_get } from "std/env"
+import { file_exists, file_write } from "std/fs"
+import { require_or_die } from "../shlib/cmd.ab"
+import { sudo_cmd } from "../shlib/sudo.ab"
+import { temp_file_create } from "../shlib/temp.ab"
+import { flag_value } from "../shlib/flag.ab"
+import { image_exists } from "../shlib/container.ab"
+
+// ── Argument + env resolution ───────────────────────────────────────
+
+fun resolve_vt(args: [Text]): Text {
+    const from_cli = flag_value(args, "--vt")
+    if from_cli != "" {
+        return from_cli
+    }
+    const from_env = env_var_get("JBDT_VT") failed { "" }
+    if from_env != "" {
+        return from_env
+    }
+    return "8"
+}
+
+fun resolve_xkb(args: [Text]): Text {
+    const from_cli = flag_value(args, "--xkb")
+    if from_cli != "" {
+        return from_cli
+    }
+    const from_env = env_var_get("JBDT_XKB") failed { "" }
+    if from_env != "" {
+        return from_env
+    }
+    return "us"
+}
+
+// ── Free display scan ────────────────────────────────────────────────
+
+fun find_free_display(): Text? {
+    let chosen = ""
+    for n in 2..=20 {
+        const unix_sock = "/tmp/.X11-unix/X{n}"
+        const lock_file = "/tmp/.X{n}-lock"
+        if not file_exists(unix_sock) and not file_exists(lock_file) {
+            chosen = "{n}"
+            break
+        }
+    }
+    if chosen == "" {
+        echo_error("No free X display number found in :2..:20")
+        fail 1
+    }
+    return ":{chosen}"
+}
+
+// ── Current VT detection via loginctl ────────────────────────────────
+
+fun current_vt(): Text {
+    const session_id = trust $ loginctl show-user "\$USER" -p Display --value 2>/dev/null $
+    if session_id == "" {
+        return ""
+    }
+    return trust $ loginctl show-session "{session_id}" -p VTNr --value 2>/dev/null $
+}
+
+fun trim_or_default(s: Text, fallback: Text): Text {
+    if s == "" {
+        return fallback
+    }
+    return s
+}
+
+// ── Xorg.wrap policy ────────────────────────────────────────────────
+
+fun ensure_xwrapper_policy(): Null {
+    const wrap_conf = "/etc/X11/Xwrapper.config"
+    if file_exists(wrap_conf) {
+        const policy = trust $ grep '^allowed_users=' "{wrap_conf}" 2>/dev/null $
+        if policy == "allowed_users=anybody" {
+            return null
+        }
+    }
+
+    echo_warning("Xorg.wrap allows only the active console user to start X; launching from")
+    echo_warning("tmux/detached shells is denied. (You can also just run this from a")
+    echo_warning("terminal that is NOT inside tmux.)")
+
+    const nl = "\n"
+    const allowed_line = "allowed_users=anybody"
+    const needs_line = "needs_root_rights=yes"
+    const fix = "touch '{wrap_conf}'; sed -i '/^allowed_users=/d; /^needs_root_rights=/d' '{wrap_conf}'; printf '{allowed_line}{nl}{needs_line}{nl}' >> '{wrap_conf}'"
+    trust sudo_cmd(fix) succeeded {
+        echo_warning("Updated {wrap_conf} (allowed_users=anybody).")
+        return null
+    }
+    echo_warning("Could not update {wrap_conf}; run from a non-tmux console terminal instead.")
+    return null
+}
+
+// ── Client script generation ─────────────────────────────────────────
+
+const LOG_FILE = "/tmp/copals_launch_native.log"
+
+fun write_client_script(display: Text, xkb_layout: Text, image: Text, vt: Text): Text? {
+    const client_path = temp_file_create("_jbdt-vt-client.sh")?
+    const setxkbmap_line = "setxkbmap -display '{display}' '{xkb_layout}' 2>/dev/null || echo '[copals] setxkbmap failed (non-fatal)'"
+    const podman_line = "exec podman run --rm -e DISPLAY='{display}' -e HOME=/home/user -v /tmp/.X11-unix:/tmp/.X11-unix --device /dev/dri --user=1000 '{image}' /usr/bin/i3"
+    const script = "#!/bin/sh\nexec >>{LOG_FILE} 2>&1\necho \"[$(date)][vt-client] started\"\necho \"  display={display} vt={vt} image={image}\"\n{setxkbmap_line}\n{podman_line}\n"
+    file_write(client_path, script)?
+    trust $ chmod +x "{client_path}" $
+    return client_path
+}
+
+// ── Main ────────────────────────────────────────────────────────────
+
+pub fun main_launch_native_vt(args: [Text]): Null? {
+    if len(args) < 1 {
+        echo_error("Usage: launch_native_i3_vt.ab <image[:tag]> [--vt <n>] [--xkb <layout>]")
+        fail 1
+    }
+
+    require_or_die("Xorg")
+    require_or_die("xinit")
+    require_or_die("podman")
+
+    const image = args[0]
+    const display = find_free_display()?
+    const cur_vt = trim_or_default(current_vt(), "7")
+    const vt = resolve_vt(args)
+
+    if vt == cur_vt {
+        echo_error("Chosen VT {vt} is your current session VT; set --vt or JBDT_VT to a free one.")
+        fail 1
+    }
+
+    const xkb_layout = resolve_xkb(args)
+
+    if not image_exists(image, "podman") {
+        echo_error("Image '{image}' not found. Build it first via 'container build <bundle>'.")
+        fail 1
+    }
+
+    ensure_xwrapper_policy()
+
+    const client_path = write_client_script(display, xkb_layout, image, vt)?
+    trust $ trap "rm -f '{client_path}'" EXIT INT TERM $
+
+    echo("")
+    echo_warning("Starting native i3 on a second Xorg: DISPLAY={display} on VT {vt} (GPU/radeonsi).")
+    echo_warning("The screen will switch to VT {vt}. Your desktop stays on VT {cur_vt}.")
+    echo_warning("Switch between them: Ctrl+Alt+F{vt}  <->  Ctrl+Alt+F{cur_vt}.")
+    echo_warning("Exit:  i3's \$mod+Shift+e  (\$mod = Super/Windows key).")
+    echo("")
+
+    // xinit runs Xorg ($display on vtN), then the client; when i3 exits, Xorg stops.
+    // -ac lets the container connect without juggling an Xauthority cookie; the X
+    // socket lives in the shared /tmp so the container reaches it via DISPLAY.
+    $ exec xinit "{client_path}" -- "{display}" "vt{vt}" -ac -nolisten tcp $ ?
+}
+
+main(args) {
+    main_launch_native_vt(args[1..len(args)])?
+}

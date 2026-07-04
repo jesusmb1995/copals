@@ -1,0 +1,75 @@
+#!/usr/bin/env amber
+// The Amber Connection: Since your library relies on the Amber language (which compiles to Bash), naming your tool Copals directly signals that it is part of the same "organic/resin" ecosystem.
+// The Act of Preserving: Just as natural copal oozes out, gathers up various leaves, insects, and debris, and seals them into a single hardened rock, the tool takes multiple repos, dotfiles, and raw source folders and freezes them into a single monolithic installer script.
+// The Varnish Utility: Historically, copal resin was harvested to make industrial varnishes and lacquers used to coat, protect, and finish wood and metal. Your tool acts as the "final finish/varnish" for setting up a fresh development environment.
+
+import { temp_file_create } from "shlib/temp.ab"
+import { temp_dir_create } from "std/fs"
+import { jsonnet_render_file } from "shlib/jsonnet.ab"
+import { abspath } from "shlib/fs.ab"
+import { RESOURCES_DIR } from "vars.ab"
+import { JSONNET } from "shlib/vendor.ab"
+import { echo_success } from "std/env"
+import { main_generate } from "gen/generate.ab"
+import { main_container } from "container/container.ab"
+import { shard_main } from "shard.ab"
+import { pipeline_main } from "pipeline.ab"
+
+fun print_help(): Null {
+    echo("Copals - Amber devtools generator")
+    echo("")
+    echo("Usage: copals <command> [options]")
+    echo("")
+    echo("Commands:")
+    echo("  generate    <user_dir> <config_name> [dest_root]")
+    echo("                           Generate the devtools installer")
+    echo("    user_dir  Path to user directory (e.g. 'user')")
+    echo("    config_name  Config preset name (e.g. 'config_personal')")
+    echo("    Flags:  -f, --force    Force re-run all repo install hooks")
+    echo("            -d, --debug    Enable shell debug output (set -x)")
+    echo("")
+    echo("  container   build <bundle_dir>     Build bundle into a container image")
+    echo("    Flags:  --reuse        Update the existing image in-place (docker commit)")
+    echo("                           instead of rebuilding from the Dockerfile. Cache")
+    echo("                           mounts (apt, npm) are shared with the Dockerfile path.")
+    echo("")
+    echo("  container   test <user_dir> <bundle_dir> [repo_id...]")
+    echo("                           Run tests in a container")
+    echo("")
+    echo("  container   launch-window <image[:tag]>")
+    echo("                           Launch i3 in a nested Xephyr window (software rendering)")
+    echo("")
+    echo("  container   launch-native-i3-vt <image[:tag]> [--vt <n>] [--xkb <layout>]")
+    echo("                           Launch i3 on a native Xorg/VT with GPU acceleration")
+    echo("")
+    echo("  shard       <user_dir> <jsonnet config> <id> [<id>...]")
+    echo("                           Generate, build, and test selected repos in isolation")
+    echo("")
+    echo("  pipeline    <user_dir> <jsonnet config> <bundle_dir>")
+    echo("                           Generate, container build, and container test")
+    echo("    Flags:  -f, --force    Force re-run (passed to generate)")
+    echo("            --reuse        Reuse existing image (passed to container build)")
+    echo("")
+    echo("  help                     Show this help message")
+}
+
+fun _main(args): Null? {
+    if len(args) < 2 {
+        print_help()
+        return null
+    }
+    const command = args[1]
+    if {
+        command == "generate": main_generate(args[2..len(args)])?
+        command == "container": main_container(args[2..len(args)])?
+        command == "shard": shard_main(args[2..len(args)])?
+        command == "pipeline": pipeline_main(args[2..len(args)])?
+        command == "help": print_help()
+        else {
+            echo("Unknown command: {command}")
+            print_help()
+        }
+    }
+}
+
+main(args) { _main(args)? }

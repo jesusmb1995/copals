@@ -1,0 +1,15 @@
+import { assert_eq } from "std/test"
+import { default_cache_dir, get_cache_dir } from "cache.ab"
+import { dir_create, dir_exists } from "std/fs"
+import { temp_dir_create } from "std/fs"
+
+test "default_cache_dir: returns ~/.cache" {
+    const cache = default_cache_dir()?
+    assert_eq(cache != "", true)
+}
+
+test "get_cache_dir: creates subfolder under cache" {
+    const sub = get_cache_dir("myapp-test")?
+    assert_eq(sub != "", true)
+    assert_eq(dir_exists(sub), true)
+}

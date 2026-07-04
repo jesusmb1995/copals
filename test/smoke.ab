@@ -1,0 +1,54 @@
+import { SHLIB_DIR, PROJECT_ROOT } from "../src/vars.ab"
+import { run_parallel } from "../src/shlib/parallel.ab"
+import { main_generate } from "../src/gen/generate.ab"
+import { build_container_from_bundle } from "../src/container/build.ab"
+import { build_and_run_test_container } from "../src/container/test.ab"
+import { temp_dir_create, file_exists, file_read } from "std/fs"
+import { echo_success, echo_error } from "std/env"
+
+pub fun run_smoke_lib_tests(max_jobs: Int = 8): Null? {
+    const test_list = [
+        "{SHLIB_DIR}/fs.test.ab",
+        "{SHLIB_DIR}/jsonnet.test.ab",
+        "{SHLIB_DIR}/symlink.test.ab",
+        "{SHLIB_DIR}/git.test.ab",
+        "{SHLIB_DIR}/regex.test.ab",
+        "{SHLIB_DIR}/json.test.ab",
+        "{SHLIB_DIR}/install/cp.test.ab",
+        "{SHLIB_DIR}/install/rsync.test.ab",
+        "{SHLIB_DIR}/install/sh.test.ab",
+        "{SHLIB_DIR}/install/symlink.test.ab",
+    ]
+    echo("Found {len(test_list)} smoke test suite(s)")
+    run_parallel(test_list, max_jobs, "test")?
+}
+
+pub fun run_smoke_integration_test(): Null? {
+    const smoke_dir = "{PROJECT_ROOT}/copals/test/integration/smoke"
+    const config_jsonnet = "{smoke_dir}/config-presets/smoke.json"
+    const dest_root = temp_dir_create("smoke-integration-XXXXXX", false, false)?
+
+    echo("Running integration smoke test...")
+    echo("  smoke dir: {smoke_dir}")
+    echo("  output: {dest_root}")
+
+    main_generate([smoke_dir, config_jsonnet, dest_root])?
+
+    const installer = "{dest_root}/install.sh"
+    if not file_exists(installer) {
+        echo_error("installer not found at {installer}")
+    }
+    echo_success("installer.sh generated at {installer}")
+
+    $ chmod +x {installer} $ ?
+    $ cd {dest_root} && ./install.sh $ ?
+
+    const marker = "/tmp/smoke-integration-marker.txt"
+    if not file_exists(marker) {
+        echo_error("smoke marker not found at {marker}")
+    }
+    const content = file_read(marker)?
+    echo_success("smoke integration test passed: {content}")
+    
+    rm(marker)?
+}

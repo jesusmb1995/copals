@@ -1,0 +1,22 @@
+import { assert_eq } from "std/test"
+import { rsync } from "rsync.ab"
+import { temp_dir_create, file_write, file_exists } from "std/fs"
+import { temp_file_create } from "temp.ab"
+import { basename } from "basename.ab"
+import { has_cmd } from "cmd.ab"
+import { echo_warning } from "std/env"
+
+test "rsync: copies a single file to target directory" {
+    if not has_cmd("rsync") {
+        echo_warning("rsync not available, skipping test")
+    } else {
+        const src = temp_file_create("-src.txt")?
+        const target = temp_dir_create("rsync-target-XXXXXX")?
+        file_write(src, "hello")?
+        
+        rsync(src, target, [], true)?
+        
+        const expected = "{target}/" + basename(src)
+        assert_eq(file_exists(expected), true)
+    }
+}

@@ -1,0 +1,48 @@
+import { assert_eq } from "std/test"
+import { dir_create, file_write, file_glob } from "std/fs"
+import { filename, file_ext, abspath, realpath_or_empty, match_files, rm_glob } from "fs.ab"
+
+test "filename: extracts filename from path" {
+    assert_eq(filename("/path/to/file.txt"), "file.txt")
+}
+
+test "filename: returns basename for simple path" {
+    assert_eq(filename("file.txt"), "file.txt")
+}
+
+test "file_ext: extracts extension" {
+    assert_eq(file_ext("file.txt")?, "txt")
+}
+
+test "abspath: resolves absolute path" {
+    const abs = abspath("/tmp")?
+    assert_eq(abs, "/tmp")
+}
+
+test "realpath_or_empty: resolves existing path" {
+    assert_eq(realpath_or_empty("/tmp"), "/tmp")
+}
+
+test "realpath_or_empty: returns empty for missing path" {
+    assert_eq(realpath_or_empty("/no/such/path/here"), "")
+}
+
+test "match_files: returns all files when match is empty" {
+    const files = ["/tmp/foo.txt", "/tmp/bar.txt", "/tmp/baz.md"]
+    assert_eq(match_files(files, "", ""), files)
+}
+
+test "match_files: filters by match list" {
+    const files = ["/tmp/test_foo.ab", "/tmp/test_bar.ab", "/tmp/other_baz.ab"]
+    assert_eq(match_files(files, "test_", ".ab", ["foo", "baz"]), ["/tmp/test_foo.ab"])
+}
+
+test "rm_glob: removes all matching files" {
+    const dir = "/tmp/amber_rmglob_test"
+    dir_create(dir)?
+    file_write("{dir}/a.tmp", "x")?
+    file_write("{dir}/b.tmp", "x")?
+    rm_glob("{dir}/*.tmp")?
+    assert_eq(len(file_glob("{dir}/*.tmp")), 0)
+    rm(dir, true)?
+}

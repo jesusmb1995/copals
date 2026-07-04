@@ -1,0 +1,26 @@
+import { echo_error } from "std/env"
+import { join } from "std/text"
+import { sudo_cmd } from "../sudo.ab"
+
+let was_updated = false 
+fun update(): Null? {
+    sudo_cmd("apt-get update", [])?
+}
+fun ensure_updated(): Null? {
+    if not was_updated {
+        update()?
+        was_updated = true
+    }
+}
+
+pub fun apt_install(packages: [Text]): Null? {
+    ensure_updated()?
+    const pkgs = join(packages, " ")
+    sudo_cmd("apt-get install -y --no-install-recommends {pkgs}", ["DEBIAN_FRONTEND=noninteractive"])?
+}
+
+pub fun apt_install_or_die(packages: [Text]) {
+    apt_install(packages) failed {
+        echo_error("failed to apt install {packages}")
+    }
+}

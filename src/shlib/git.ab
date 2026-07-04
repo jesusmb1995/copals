@@ -1,0 +1,39 @@
+fun _can_apply(target_repo: Text, patch_file: Text): Bool {
+    $ git -C {target_repo} apply --check {patch_file} $ failed {
+        return false
+    }
+    return true
+}
+
+fun _can_apply_in_reverse(target_repo: Text, patch_file: Text): Bool {
+    $ git -C {target_repo} apply --check --reverse {patch_file} $ failed {
+        return false
+    }
+    return true
+}
+
+pub fun is_patch_already_applied(target_repo: Text, patch_file: Text): Bool {
+    if {
+        _can_apply_in_reverse(target_repo, patch_file) {
+            return true
+        } else {
+            return false
+        }
+    }
+}
+
+pub fun git_apply_patch(target_repo: Text, patch_file: Text): Null? {
+    $ git -C {target_repo} apply {patch_file} $ ?
+}
+
+pub fun git_init(repo: Text): Null? {
+    $ git init {repo} $ ?
+}
+
+pub fun git_add(repo: Text, file: Text): Null? {
+    $ git -C {repo} add {file} $ ?
+}
+
+pub fun git_commit(repo: Text, name: Text, email: Text, message: Text): Null? {
+    $ git -C {repo} -c user.name={name} -c user.email={email} commit -m {message} $ ?
+}

@@ -1,0 +1,13 @@
+import { echo_error } from "std/env"
+import { download_tmp } from "../fetch.ab"
+
+pub fun execute_remote_sh(url: Text, env: [Text] = [], args: [Text] = []): Null? {
+    const sh_path = download_tmp(url)?
+    $ env {env} sh {sh_path} {args} $?
+}
+
+pub fun execute_remote_sh_or_die(url: Text, env: [Text] = [], args: [Text] = []) {
+    execute_remote_sh(url, env, args) failed {
+        echo_error("failed to run remote sh: {url}")
+    }
+}

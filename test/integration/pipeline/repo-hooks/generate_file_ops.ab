@@ -1,0 +1,12 @@
+import { file_write, dir_create } from "std/fs"
+import { env_var_get } from "std/env"
+
+main(_) {
+    const target_path = env_var_get("TARGET_PATH")?
+    dir_create("{target_path}/cp-dir")?
+    file_write("{target_path}/cp-dir/copied.txt", "content for cp test")?
+    dir_create("{target_path}/rsync-dir")?
+    file_write("{target_path}/rsync-dir/rsynced.txt", "content for rsync test")?
+    dir_create("{target_path}/symlink-dir")?
+    file_write("{target_path}/symlink-dir/symlink-target.txt", "symlink target file")?
+}

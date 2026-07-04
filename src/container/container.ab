@@ -1,0 +1,55 @@
+import { has_flag } from "../shlib/flag.ab"
+import { build_container_from_bundle } from "build.ab"
+import { build_and_run_test_container } from "test.ab"
+import { split_lines } from "std/text"
+import { echo_error } from "std/env"
+import { JQ } from "../shlib/vendor.ab"
+import { main_launch_window } from "launch_window.ab"
+import { main_launch_native_vt } from "launch_native_i3_vt.ab"
+import { abspath } from "../shlib/fs.ab"
+
+fun read_repo_ids_from_meta(bundle_dir: Text): [Text] {
+    const meta = "{bundle_dir}/meta.json"
+    return split_lines(trust $ {JQ} -r '.repo_ids[]' {meta} $)
+}
+
+pub fun main_container(args: [Text]): Null? {
+    trust $ set -x $
+    if len(args) < 2 {
+        echo_error("container: missing <build|test> <bundle_dir>")
+    }
+    const command = args[0]
+    if {
+        command == "build": {
+            const bundle_dir = args[1]
+            const reuse = has_flag(args, "--reuse")
+            build_container_from_bundle(bundle_dir, reuse)?
+        }
+        command == "test": {
+            if len(args) < 3 {
+                echo_error("container test: missing <user_dir> <bundle_dir>")
+                fail 1
+            }
+            const user_dir = abspath(args[1])?
+            const bundle_dir = args[2]
+            const from_cli = args[3..len(args)]
+            let repo_ids = from_cli
+            if len(repo_ids) < 1 {
+                repo_ids = read_repo_ids_from_meta(bundle_dir)
+            }
+            build_and_run_test_container(bundle_dir, repo_ids, "podman", user_dir)?
+        }
+        command == "launch-window": {
+            const other_args = args[1..len(args)]
+            main_launch_window(other_args)?
+        }
+        command == "launch-native-i3-vt": {
+            const other_args = args[1..len(args)]
+            main_launch_native_vt(other_args)?
+        }
+        else: {
+            echo("container: unknown command '{command}', expected build|test")
+            fail 1
+        }
+    }
+}

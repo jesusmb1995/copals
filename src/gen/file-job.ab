@@ -1,0 +1,10 @@
+import { replace_one, replace_regex } from "std/text"
+import { dir_create } from "std/fs"
+
+pub fun prepare_for_file_transform(tree_dir: Text, in_filename: Text, out_dir: Text, in_ext: Text, out_ext: Text = ""): Text? {
+    const rel = replace_one(in_filename, tree_dir, "")
+    const rel_stem = replace_regex(rel, "\\.{in_ext}$", out_ext)
+    const output_file = "{out_dir}{rel_stem}"
+    dir_create($ dirname {output_file} $ ?)?
+    return output_file
+}
