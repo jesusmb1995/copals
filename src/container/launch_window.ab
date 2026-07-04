@@ -55,6 +55,7 @@ fun launch(image: Text): Null? {
     xephyr_screen(resolution, XEPHYR_DISPLAY)?
 
     $ podman run --rm -it \
+        --ipc=host \
         -e DISPLAY={XEPHYR_DISPLAY} \
         -e HOME=/home/user \
         -e LIBGL_ALWAYS_SOFTWARE=1 \
