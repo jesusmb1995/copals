@@ -27,7 +27,19 @@ sh copals.sh build my_config_dir preset_name dest_dir
 ```
 
 Where `my_config_dir` has the following structure:
- -
+
+```
+my_config_dir/
+├── config-presets/          # Jsonnet/JSON build presets
+│   └── my_preset.jsonnet
+├── repo-hooks/              # Amber hooks per repo (generate_*, install_*)
+│   ├── generate_<repo_id>.ab
+│   └── install_<repo_id>.ab
+├── repos/                   # Source config directories
+│   └── <repo_id>/
+└── tests/                   # Optional integration tests
+    └── ...
+```
 
 ## Advanced Usage
 
