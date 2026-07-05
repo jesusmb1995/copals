@@ -14,6 +14,8 @@ copals shard <user_dir> <jsonnet_config> <id> [<id>...]
 
 It filters the config to only include specified repo IDs (via `shard.jsonnet`), builds each as a layered dependency using `deploy_bundle.Dockerfile`, and runs container tests on the final bundle.
 
+During development its also fast to build your whole image once, and then use `shard reuse` to install and test individual repo by modifying existing running image. This alows to do live editing/development.
+
 ## CI Pipeline
 
 The `pipeline` command runs generate → container build → container test in sequence:

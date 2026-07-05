@@ -1,5 +1,5 @@
 import { SHLIB_DIR, BASHUNIT, RESOURCES_DIR } from "../vars.ab"
-import { build_image } from "../shlib/container.ab"
+import { build_image, exec_in_container } from "../shlib/container.ab"
 import { build_base } from "base.ab"
 import { symlink_create_dir } from "../shlib/symlink.ab"
 import { temp_dir_create, dir_create, file_glob, file_write } from "std/fs"
@@ -41,6 +41,79 @@ fun compile_test_script(tmp: Text, entry_name: Text, out_name: Text, ab_files: [
     return out_sh
 }
 
+fun gather_screenshot_files(test_folder: Text, repo_ids: [Text]): [Text] {
+    let screenshot_files = []
+    const all_screenshot_files = file_glob("{test_folder}/screenshot/*.ab")
+    if len(repo_ids) > 0 {
+        screenshot_files = match_files(all_screenshot_files, "test_screenshot_", ".ab", repo_ids)
+    } else {
+        screenshot_files = all_screenshot_files
+    }
+    return screenshot_files
+}
+
+fun prepare_build_dir(regular_files: [Text], screenshot_files: [Text], enable_screenshot: Bool): Text? {
+    const tmp = temp_dir_create("copals-test-XXXXXX")?
+
+    let ab_files = regular_files 
+    if enable_screenshot {
+        ab_files += screenshot_files
+    }
+    for f in ab_files {
+        cp(f, tmp)?
+    }
+    symlink_create_dir("{SHLIB_DIR}", "{tmp}/shlib")?
+
+    return tmp
+}
+
+fun gather_screenshot_vols(test_folder: Text): [Text] {
+    let vols = ""
+    const screenshot_golden = "{test_folder}/screenshot/golden"
+    const screenshot_generated = "{test_folder}/screenshot/.generated"
+    trust $ mkdir -p {screenshot_golden} {screenshot_generated} && chmod 777 {screenshot_generated} $
+    vols += " --volume {screenshot_golden}:/home/user/.golden:ro,z"
+    vols += " --volume {screenshot_generated}:/home/user/.generated:z"
+    return [vols, screenshot_golden, screenshot_generated]
+}
+
+fun compile_pkg(tmp_folder: Text, regular_files: [Text], screenshot_files: [Text], enable_screenshot: Bool, bundle_dir: Text): Text? {
+    compile_test_script(tmp_folder, "test.ab", "tests.sh", regular_files)?
+    if enable_screenshot {
+        compile_test_script(tmp_folder, "screenshot_test.ab", "screenshot_tests.sh", screenshot_files)?
+    }
+
+    const run_tests_sh = "{tmp_folder}/run_tests.sh"
+    let screenshot_code = ""
+    if enable_screenshot {
+        screenshot_code = "bashunit /tests/screenshot_tests.sh\n"
+    }
+    file_write(run_tests_sh, "#!/bin/bash\nset -e\nbashunit /tests/tests.sh --parallel\n{screenshot_code}")?
+
+    const pkg = "{tmp_folder}/pkg"
+    dir_create(pkg)?
+    cp("{tmp_folder}/tests.sh", pkg)?
+    if enable_screenshot {
+        cp("{tmp_folder}/screenshot_tests.sh", pkg)?
+    }
+    cp(run_tests_sh, pkg)?
+    cp(BASHUNIT, pkg)?
+    cp("{bundle_dir}/meta.json", pkg)?
+
+    return pkg
+}
+
+fun get_resolved_base(
+    bundle_dir: Text,
+    base_image_tag: Text = ""
+): Text? {
+    let resolved_base = base_image_tag
+    if resolved_base == "" {
+        resolved_base = "{sanitize_tag(lower(basename(bundle_dir)?)?)}:latest"
+    }
+    return resolved_base
+}
+
 pub fun build_and_run_test_container(
     bundle_dir: Text,
     repo_ids: [Text] = [],
@@ -49,47 +122,19 @@ pub fun build_and_run_test_container(
     base_image_tag: Text = ""
 ): Null? {
     const test_folder = "{user_dir}/tests"
-    let resolved_base = base_image_tag
-    if resolved_base == "" {
-        resolved_base = "{sanitize_tag(lower(basename(bundle_dir)?)?)}:latest"
-    }
-    const test_image_tag = "localhost/copals-test:latest"
-
-    const tmp = temp_dir_create("copals-test-XXXXXX")?
+    const enable_screenshot = true
+    const resolved_base = get_resolved_base(bundle_dir, base_image_tag)?
 
     const regular_files = match_files(
         file_glob("{test_folder}/*.ab"), "test_", ".ab", repo_ids)
+    const screenshot_files = gather_screenshot_files(test_folder, repo_ids)
 
-    const all_screenshot_files = file_glob("{test_folder}/screenshot/*.ab")
-    let screenshot_files = []
-    if len(repo_ids) > 0 {
-        screenshot_files = match_files(all_screenshot_files, "test_screenshot_", ".ab", repo_ids)
-    } else {
-        screenshot_files = all_screenshot_files
-    }
-
-    const ab_files = regular_files + screenshot_files
-    for f in ab_files {
-        cp(f, tmp)?
-    }
-    symlink_create_dir("{SHLIB_DIR}", "{tmp}/shlib")?
-
-    compile_test_script(tmp, "test.ab", "tests.sh", regular_files)?
-    compile_test_script(tmp, "screenshot_test.ab", "screenshot_tests.sh", screenshot_files)?
-
-    const run_tests_sh = "{tmp}/run_tests.sh"
-    file_write(run_tests_sh, "#!/bin/bash\nset -e\nbashunit /tests/tests.sh --parallel\nbashunit /tests/screenshot_tests.sh\n")?
-
-    const pkg = "{tmp}/pkg"
-    dir_create(pkg)?
-    cp("{tmp}/tests.sh", pkg)?
-    cp("{tmp}/screenshot_tests.sh", pkg)?
-    cp(run_tests_sh, pkg)?
-    cp(BASHUNIT, pkg)?
-    cp("{bundle_dir}/meta.json", pkg)?
+    const tmp = prepare_build_dir(regular_files, screenshot_files, enable_screenshot)?
+    const pkg = compile_pkg(tmp, regular_files, screenshot_files, enable_screenshot, bundle_dir)?
 
     const test_base_tag = build_base("copals_test_base.Dockerfile", "copals-test-base:latest", "copals-apt-fast-base:latest", container_runtime)?
 
+    const test_image_tag = "localhost/copals-test:latest"
     const bashunit_name = basename(BASHUNIT)?
     const build_args = [
         "BASE={resolved_base}",
@@ -99,21 +144,35 @@ pub fun build_and_run_test_container(
     ]
     build_image("{RESOURCES_DIR}/deploy_test.Dockerfile", test_image_tag, pkg, build_args, container_runtime)?
 
-    let vols = ""
-    const screenshot_golden = "{test_folder}/screenshot/golden"
-    const screenshot_generated = "{test_folder}/screenshot/.generated"
-    trust $ mkdir -p {screenshot_golden} {screenshot_generated} && chmod 777 {screenshot_generated} $
-    vols += " --volume {screenshot_golden}:/home/user/.golden:ro,z"
-    vols += " --volume {screenshot_generated}:/home/user/.generated:z"
+    const [vols, screenshot_golden, screenshot_generated] = gather_screenshot_vols(test_folder)
     const shm_flag = " --shm-size 256M"
 
     $ {container_runtime} run --rm {shm_flag} {vols} {test_image_tag} $ exited(code) {
         if code != 0 {
-            trust $ echo '' $
-            trust $ echo 'To promote new screenshots to golden:' $
-            trust $ echo '  cp {screenshot_generated}/*.ref.png {screenshot_golden}/' $
-            trust $ echo '' $
+            echo("To promote new screenshots to golden:")
+            echo("cp {screenshot_generated}/*.ref.png {screenshot_golden}/'")
+            echo("") 
             fail code 
         }
     }
+}
+
+pub fun run_reused_container(
+    bundle_dir: Text,
+    repo_ids: [Text],
+    container_runtime: Text,
+    user_dir: Text,
+    container_id: Text
+): Null? {
+    const test_folder = "{user_dir}/tests"
+    const enable_screenshot = false
+    const regular_files = match_files(file_glob("{test_folder}/*.ab"), "test_", ".ab", repo_ids)
+    const tmp = prepare_build_dir(regular_files, [], enable_screenshot)?
+    const pkg = compile_pkg(tmp, regular_files, [], enable_screenshot, bundle_dir)?
+
+    exec_in_container(container_id,
+        "chmod +x /usr/local/bin/bashunit && su -l user -c 'bashunit /tmp/tests.sh --parallel'",
+        container_runtime, "0",
+        ["{pkg}/tests.sh", BASHUNIT],
+        ["/tmp/tests.sh", "/usr/local/bin/bashunit"])?
 }

@@ -3,9 +3,9 @@ import { jsonnet_render_tla_file } from "shlib/jsonnet.ab"
 import { RESOURCES_DIR } from "vars.ab"
 import { JQ } from "shlib/vendor.ab"
 import { main_generate, resolve_config_path } from "gen/generate.ab"
-import { build_image } from "shlib/container.ab"
+import { build_image, image_exists, find_or_start_container, update_container, exec_in_container } from "shlib/container.ab"
 import { build_container_from_bundle } from "container/build.ab"
-import { build_and_run_test_container } from "container/test.ab"
+import { build_and_run_test_container, run_reused_container } from "container/test.ab"
 import { get_cache_dir } from "shlib/cache.ab"
 import { sanitize_tag } from "shlib/text.ab"
 import { join, split_lines } from "std/text"
@@ -72,7 +72,51 @@ pub fun shard(user_dir: Text, jsonnet_config: Text, ids: [Text]): Null? {
     build_and_run_test_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, shard_tag)?
 }
 
+pub fun shard_reuse(tag: Text, ids: [Text]): Null? {
+    const user_dir = "user"
+    const jsonnet_config = "config_personal"
+    const cache_dir = get_cache_dir("copals/shard")?
+    const ids_csv = join(ids, ",")
+    const shard_name = "shard-{join(ids, "-")}"
+    const shard_bundle = "{cache_dir}/{shard_name}"
+
+    const resolved_config = resolve_config_path(user_dir, jsonnet_config)?
+    const filtered_json = jsonnet_render_tla_file(
+        "{RESOURCES_DIR}/shard.jsonnet",
+        "user_config",
+        resolved_config,
+        "shard_ids={ids_csv}"
+    )?
+
+    dir_create(shard_bundle)?
+    main_generate([user_dir, filtered_json, shard_bundle])?
+
+    const enabled_ids = split_lines(
+        $ {JQ} -r '.repositories[] | select(.enabled == true) | .id' {filtered_json} $ ?)
+
+    if not image_exists(tag, "podman") {
+        echo_error("shard: image {tag} not found")
+        fail 1
+    }
+    const ctr = find_or_start_container(tag, "podman")?
+    const bundle_name = basename(shard_bundle)?
+    exec_in_container(ctr,
+        "cd /home/user/{bundle_name} && ./install.sh && chown -R user:user /home/user",
+        "podman", "0",
+        [shard_bundle],
+        ["/home/user/{bundle_name}"])?
+    run_reused_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, ctr)?
+}
+
 pub fun shard_main(args: [Text]): Null? {
+    if len(args) >= 2 and args[0] == "reuse" {
+        if len(args) < 3 {
+            echo_error("shard: usage: shard reuse <image_tag> <id> [<id>...]")
+            fail 1
+        }
+        shard_reuse(args[1], args[2..len(args)])?
+        return null
+    }
     if len(args) < 3 {
         echo_error("shard: missing <user_dir> <jsonnet config> <id> [<id>...]")
         fail 1

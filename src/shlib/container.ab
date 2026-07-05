@@ -1,4 +1,5 @@
 import { temp_dir_create } from "std/fs"
+import { split } from "std/text"
 
 pub fun build_image(dockerfile: Text, tag: Text, context: Text, build_args: [Text] = [], runtime: Text = "podman", cps: [Text] = [""]): Text? {
     const ctx = temp_dir_create("build-ctx.XXXXXX")?
@@ -31,6 +32,14 @@ pub fun remove_image(tag: Text, runtime: Text = "podman"): Null {
     $ {runtime} image rm -f {tag} $ failed {
         // ignore — image may not exist
     }
+}
+
+pub fun find_or_start_container(tag: Text, runtime: Text = "podman"): Text? {
+    const running = $ {runtime} ps -q --filter "ancestor={tag}" --filter "status=running" $ ?
+    if running != "" {
+        return split(running, "\n")[0]
+    }
+    return $ {runtime} run -d --rm {tag} sleep infinity $ ?
 }
 
 pub fun ensure_stop(tag: Text, runtime: Text): Null? {
@@ -74,4 +83,23 @@ pub fun update_container(
         $ {runtime} exec --user={user} {ctr} bash -lc "{cmd}" $ ?
     }
     return $ {runtime} commit {ctr} {tag} $ ?
+}
+
+pub fun exec_in_container(
+    ctr: Text,
+    cmd: Text,
+    runtime: Text = "podman",
+    user: Text = "0",
+    cp_srcs: [Text] = [],
+    cp_dsts: [Text] = []
+): Null? {
+    if len(cp_srcs) != len(cp_dsts) { fail 1 }
+    let i = 0
+    while i < len(cp_srcs) {
+        $ {runtime} cp {cp_srcs[i]} {ctr}:{cp_dsts[i]} $ ?
+        i += 1
+    }
+    if cmd != "" {
+        $ {runtime} exec --user={user} {ctr} bash -lc "{cmd}" $ ?
+    }
 }

@@ -1,12 +1,3 @@
-pub fun has_flag(args: [Text], flag: Text): Bool {
-    for a in args {
-        if a == flag {
-            return true
-        }
-    }
-    return false
-}
-
 pub fun flag_value(args: [Text], flag: Text): Text {
     let i = 0
     while i < len(args) {
@@ -16,4 +7,26 @@ pub fun flag_value(args: [Text], flag: Text): Text {
         i += 1
     }
     return ""
+}
+
+pub fun extract_flag(args: [Text], flag: Text): [Text]? {
+    let remaining = []
+    for a in args {
+        if a != flag {
+            remaining += [a]
+        }
+    }
+    if len(remaining) == len(args) {
+        fail 1
+    }
+    return remaining
+}
+
+pub fun has_flag(args: [Text], flag: Text): Bool {
+    for a in args {
+        if a == flag {
+            return true
+        }
+    }
+    return false
 }
