@@ -1,6 +1,9 @@
+import { dir_create } from "std/fs"
 import { join } from "std/text"
 
 pub fun rsync(src: Text, target: Text, excludes: [Text], delete: Bool = true): Null? { 
+    dir_create(target)?
+
     let excludes_arr = []
     for exclude in excludes {
         const s = "{exclude}"
