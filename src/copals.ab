@@ -46,6 +46,7 @@ fun print_help(): Null {
     echo("                           Generate, build, and test selected repos in isolation")
     echo("  shard       reuse <image_tag> <id> [<id>...]")
     echo("                           Install deps into existing image and test in-place")
+    echo("    Flags:  --sudo        Run install as root instead of user")
     echo("")
     echo("  pipeline    <user_dir> <jsonnet config> <bundle_dir>")
     echo("                           Generate, container build, and container test")

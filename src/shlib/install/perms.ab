@@ -1,7 +1,15 @@
 import { echo_error } from "std/env"
+import { home } from "../env.ab"
 
 pub fun set_only_user_write_or_die(path: Text) {
     $ chmod -R g-w,o-w {path} $ failed {
         echo_error("failed to set {path} perms to user-only write")
     }
+}
+
+pub fun set_only_user_write_or_die_at_home(rel_path: Text) {
+    const h = home() failed {
+        echo_error("cannot determine home directory for {rel_path}")
+    }
+    set_only_user_write_or_die("{h}/{rel_path}")
 }

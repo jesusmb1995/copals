@@ -3,8 +3,7 @@ import { dir_create } from "std/fs"
 import { home } from "../env.ab"
 import { rsync } from "../rsync.ab"
 
-pub fun rsync_into_home(src: Text, rel_target: Text): Null? {
-    const delete = false;
+pub fun rsync_into_home(src: Text, rel_target: Text, delete: Bool = false): Null? {
     const excludes = []
     const h = home()?
     const target = "{h}/{rel_target}"
@@ -12,8 +11,8 @@ pub fun rsync_into_home(src: Text, rel_target: Text): Null? {
     rsync(src, target, excludes, delete)?
 }
 
-pub fun rsync_or_die_into_home(src: Text, rel_target: Text) {
-    rsync_into_home(src, rel_target) failed {
+pub fun rsync_or_die_into_home(src: Text, rel_target: Text, delete: Bool = false) {
+    rsync_into_home(src, rel_target, delete) failed {
         echo_error("rsync deploy of {src} into {rel_target} failed")
     }
 }

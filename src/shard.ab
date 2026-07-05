@@ -1,4 +1,5 @@
-import { dir_create } from "std/fs"
+import { dir_create, temp_dir_create } from "std/fs"
+import { get_cache_dir } from "shlib/cache.ab"
 import { jsonnet_render_tla_file } from "shlib/jsonnet.ab"
 import { RESOURCES_DIR } from "vars.ab"
 import { JQ } from "shlib/vendor.ab"
@@ -6,13 +7,13 @@ import { main_generate, resolve_config_path } from "gen/generate.ab"
 import { build_image, image_exists, find_or_start_container, update_container, exec_in_container } from "shlib/container.ab"
 import { build_container_from_bundle } from "container/build.ab"
 import { build_and_run_test_container, run_reused_container } from "container/test.ab"
-import { get_cache_dir } from "shlib/cache.ab"
 import { sanitize_tag } from "shlib/text.ab"
 import { join, split_lines } from "std/text"
 import { basename } from "shlib/basename.ab"
 import { abspath } from "shlib/fs.ab"
 import { json_value_or } from "shlib/json.ab"
 import { echo_error } from "std/env"
+import { has_flag, extract_flag } from "shlib/flag.ab"
 
 const DEPLOY_BUNDLE_DOCKERFILE = "{RESOURCES_DIR}/deploy_bundle.Dockerfile"
 
@@ -72,13 +73,16 @@ pub fun shard(user_dir: Text, jsonnet_config: Text, ids: [Text]): Null? {
     build_and_run_test_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, shard_tag)?
 }
 
-pub fun shard_reuse(tag: Text, ids: [Text]): Null? {
+pub fun shard_reuse(tag: Text, ids: [Text], as_root: Bool = false): Null? {
     const user_dir = "user"
     const jsonnet_config = "config_personal"
-    const cache_dir = get_cache_dir("copals/shard")?
     const ids_csv = join(ids, ",")
     const shard_name = "shard-{join(ids, "-")}"
-    const shard_bundle = "{cache_dir}/{shard_name}"
+    const shard_bundle = temp_dir_create("{shard_name}.XXXXXX")?
+    let run_as = "user"
+    if as_root {
+        run_as = "0"
+    }
 
     const resolved_config = resolve_config_path(user_dir, jsonnet_config)?
     const filtered_json = jsonnet_render_tla_file(
@@ -100,21 +104,28 @@ pub fun shard_reuse(tag: Text, ids: [Text]): Null? {
     }
     const ctr = find_or_start_container(tag, "podman")?
     const bundle_name = basename(shard_bundle)?
+    const target_dir = "{bundle_name}{ids[0]}"
+
     exec_in_container(ctr,
-        "cd /home/user/{bundle_name} && ./install.sh && chown -R user:user /home/user",
-        "podman", "0",
+        "cd /home/user/{target_dir} && ./install.sh",
+        "podman", run_as,
         [shard_bundle],
-        ["/home/user/{bundle_name}"])?
+        ["/home/user/{target_dir}"])?
     run_reused_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, ctr)?
 }
 
 pub fun shard_main(args: [Text]): Null? {
     if len(args) >= 2 and args[0] == "reuse" {
-        if len(args) < 3 {
+        const want_root = has_flag(args, "--sudo")
+        let ids_args = args[2..len(args)]
+        if want_root {
+            ids_args = extract_flag(ids_args, "--sudo")?
+        }
+        if len(ids_args) < 1 {
             echo_error("shard: usage: shard reuse <image_tag> <id> [<id>...]")
             fail 1
         }
-        shard_reuse(args[1], args[2..len(args)])?
+        shard_reuse(args[1], ids_args, want_root)?
         return null
     }
     if len(args) < 3 {
