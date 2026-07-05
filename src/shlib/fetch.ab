@@ -1,3 +1,4 @@
+import { echo_error } from "std/env"
 import { temp_file_create } from "temp.ab"
 
 pub fun download_to(url: Text, target: Text): Text? {
@@ -8,4 +9,14 @@ pub fun download_tmp(url: Text): Text? {
     const target = temp_file_create()?
     download_to(url, target)?
     return target
+}
+
+pub fun download_verified_url_to(url: Text, target: Text, expected_hash: Text): Null? {
+    download_to(url, target) failed { return null }
+    const actual = $ sha256sum {target} | cut -d' ' -f1 $ ?
+    if actual != expected_hash {
+        echo_error("sha256 mismatch for {target}: expected {expected_hash}, got {actual}")
+        trust $ rm -f {target} $
+        return null
+    }
 }

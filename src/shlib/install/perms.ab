@@ -13,3 +13,7 @@ pub fun set_only_user_write_or_die_at_home(rel_path: Text) {
     }
     set_only_user_write_or_die("{h}/{rel_path}")
 }
+
+pub fun make_executable(path: Text): Null? {
+    $ chmod +x {path} $ ?
+}

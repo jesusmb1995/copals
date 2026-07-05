@@ -1,6 +1,9 @@
-import { download_to } from "../fetch.ab"
+import { download_to, download_verified_url_to } from "../fetch.ab"
+import { dir_create } from "std/fs"
 import { echo_error } from "std/env"
 import { env_vars_get } from "env.ab"
+import { home } from "../env.ab"
+import { make_executable } from "perms.ab"
 
 pub fun download_to_target_env(url: Text): Null? {
     const [target_path] = env_vars_get(["TARGET_PATH"])?
@@ -10,5 +13,45 @@ pub fun download_to_target_env(url: Text): Null? {
 pub fun download_to_target_env_or_die(url: Text) {
     download_to_target_env(url) failed {
         echo_error("failed to download {url}")
+    }
+}
+
+pub fun download_url_to_home(url: Text, rel_path: Text): Null? {
+    const h = home()?
+    const full = "{h}/{rel_path}"
+    const parent = $ dirname {full} $ ?
+    dir_create(parent)?
+    download_to(url, full)?
+}
+
+pub fun download_url_to_home_or_die(url: Text, rel_path: Text) {
+    download_url_to_home(url, rel_path) failed {
+        echo_error("failed to download {url} to ~/{rel_path}")
+    }
+}
+
+pub fun download_verified_url_to_home(url: Text, rel_path: Text, expected_hash: Text): Null? {
+    const h = home()?
+    const full = "{h}/{rel_path}"
+    const parent = $ dirname {full} $ ?
+    dir_create(parent)?
+    download_verified_url_to(url, full, expected_hash)?
+}
+
+pub fun download_verified_url_to_home_or_die(url: Text, rel_path: Text, expected_hash: Text) {
+    download_verified_url_to_home(url, rel_path, expected_hash) failed {
+        echo_error("failed to download or verify {url} to ~/{rel_path}")
+    }
+}
+
+pub fun download_verified_executable_to_home(url: Text, rel_path: Text, expected_hash: Text): Null? {
+    download_verified_url_to_home(url, rel_path, expected_hash)?
+    const h = home()?
+    make_executable("{h}/{rel_path}")?
+}
+
+pub fun download_verified_executable_to_home_or_die(url: Text, rel_path: Text, expected_hash: Text) {
+    download_verified_executable_to_home(url, rel_path, expected_hash) failed {
+        echo_error("failed to download, verify, or make executable {url} to ~/{rel_path}")
     }
 }
