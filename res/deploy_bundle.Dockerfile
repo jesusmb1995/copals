@@ -30,8 +30,11 @@ RUN --mount=type=tmpfs,target=/tmp \
 
 # Fix ownership: install.sh runs as root, ensure the user owns its home.
 # Keep .homebrew owned by root so brew --reuse (run as root) can write to it.
-RUN chown -R ${USERNAME}:${USERNAME} ${HOME} \
- && chown -R root:root ${HOME}/.homebrew 2>/dev/null || true
+# Split into separate RUN layers so Docker cannot coalesce them with the
+# install.sh layer cache; otherwise an older cached layer can keep .config
+# (created by install) as root-owned and the chown never re-applies.
+RUN chown -R ${USERNAME}:${USERNAME} ${HOME}
+RUN chown -R root:root ${HOME}/.homebrew 2>/dev/null || true
 
 # Default to the unprivileged user so x11docker/distrobox/podman run as "user"
 # rather than root, with the fully-configured /home/${USERNAME}.
