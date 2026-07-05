@@ -22,3 +22,11 @@ pub fun rsync_or_die_opts(src: Text, target: Text, excludes: [Text], delete: Boo
         echo_error("rsync deploy of {src} into {target} failed")
     }
 }
+
+pub fun rsync_or_die_opts_into_home(src: Text, rel_target: Text, excludes: [Text], delete: Bool) {
+    const h = home() failed {
+        echo_error("rsync_or_die_opts_into_home: failed to resolve home directory")
+        exit(1)
+    }
+    rsync_or_die_opts(src, "{h}/{rel_target}", excludes, delete)
+}
