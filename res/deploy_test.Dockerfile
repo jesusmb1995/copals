@@ -19,11 +19,6 @@ USER root
 RUN chmod +x /usr/local/bin/bashunit \
  && (useradd --create-home --shell /bin/bash ${USERNAME} || true)
 
-ENV USERNAME=${USERNAME}
-
-RUN chown -R ${USERNAME}:${USERNAME} ${HOME} \
- && chown -R root:root ${HOME}/.homebrew 2>/dev/null || true
-
 USER ${USERNAME}
 
 CMD ["/bin/bash", "/tests/run_tests.sh"]
