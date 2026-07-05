@@ -16,8 +16,7 @@ COPY ${CONTEXT_DIR}/meta.json /tests/meta.json
 COPY --from=${BASE_TOOLS} / /
 
 USER root
-RUN chmod +x /usr/local/bin/bashunit \
- && (useradd --create-home --shell /bin/bash ${USERNAME} || true)
+RUN chmod +x /usr/local/bin/bashunit
 
 USER ${USERNAME}
 
