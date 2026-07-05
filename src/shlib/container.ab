@@ -97,6 +97,9 @@ pub fun exec_in_container(
     let i = 0
     while i < len(cp_srcs) {
         $ {runtime} cp {cp_srcs[i]} {ctr}:{cp_dsts[i]} $ ?
+        if user != "0" {
+            $ {runtime} exec {ctr} chown -R {user}:{user} {cp_dsts[i]} $ ?
+        }
         i += 1
     }
     if cmd != "" {

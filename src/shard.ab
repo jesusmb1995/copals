@@ -20,7 +20,7 @@ const DEPLOY_BUNDLE_DOCKERFILE = "{RESOURCES_DIR}/deploy_bundle.Dockerfile"
 pub fun shard(user_dir: Text, jsonnet_config: Text, ids: [Text]): Null? {
     const cache_dir = get_cache_dir("copals/shard")?
     const ids_csv = join(ids, ",")
-    const shard_name = "shard-{join(ids, "-")}"
+    const shard_name = "shard_{join(ids, "_")}"
     const shard_bundle = "{cache_dir}/{shard_name}"
 
     const resolved_config = resolve_config_path(user_dir, jsonnet_config)?
@@ -77,8 +77,8 @@ pub fun shard_reuse(tag: Text, ids: [Text], as_root: Bool = false): Null? {
     const user_dir = "user"
     const jsonnet_config = "config_personal"
     const ids_csv = join(ids, ",")
-    const shard_name = "shard-{join(ids, "-")}"
-    const shard_bundle = temp_dir_create("{shard_name}.XXXXXX")?
+    const shard_name = "shard_{join(ids, "_")}"
+    const shard_bundle = temp_dir_create("{shard_name}-XXXXXX")?
     let run_as = "user"
     if as_root {
         run_as = "0"
@@ -104,11 +104,11 @@ pub fun shard_reuse(tag: Text, ids: [Text], as_root: Bool = false): Null? {
     }
     const ctr = find_or_start_container(tag, "podman")?
     const bundle_name = basename(shard_bundle)?
-    const target_dir = "{bundle_name}{ids[0]}"
+    const target_dir = bundle_name
 
     exec_in_container(ctr,
-        "cd /home/user/{target_dir} && ./install.sh",
-        "podman", run_as,
+        "cd /home/user/{target_dir} && ./install.sh && chown -R user:user /home/user/.",
+        "podman", "0",
         [shard_bundle],
         ["/home/user/{target_dir}"])?
     run_reused_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, ctr)?
