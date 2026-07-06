@@ -2,8 +2,9 @@ ARG ALPINE_VERSION=3.22.5
 
 FROM curlimages/curl:8.21.0 AS downloader
 USER root
-RUN apk add --no-cache xz
+RUN apk add --no-cache xz bash
 COPY dependencies.sh /tmp/dependencies.sh
+COPY vendor/bashunit_installer/install_bashunit.sh /tmp/vendor/bashunit_installer/install_bashunit.sh
 RUN ["/bin/sh", "/tmp/dependencies.sh", "/tmp/vendor"]
 
 FROM alpine:${ALPINE_VERSION} AS builder

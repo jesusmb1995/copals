@@ -17,6 +17,7 @@ main(args) {
         type = args[1]
     }
     if {
+        // TODO vendor... checks dependencies.sh inside new container and see if it works...
         type == "check": run_check(default_dirs)?
         type == "lib": run_lib_tests([SHLIB_DIR])?
         type == "smoke": { 

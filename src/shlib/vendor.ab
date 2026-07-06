@@ -44,7 +44,15 @@ fun jsonschema_resolve(): Text {
     return "{VENDOR_DIR}/jsonschema"
 }
 
+fun lua_resolve(): Text {
+    if VENDOR_DIR == "" {
+        return "lua"
+    }
+    return "{VENDOR_DIR}/lua"
+}
+
 pub const JQ = jq_resolve()
 pub const J2 = j2_resolve()
 pub const JSONNET = jsonnet_resolve()
 pub const JSONSCHEMA = jsonschema_resolve()
+pub const LUA = lua_resolve()

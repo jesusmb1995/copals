@@ -29,3 +29,4 @@ pub fun json_list_value(config_file: Text, id: Text, key: Text): [Text]? {
   }
   fail status()
 }
+

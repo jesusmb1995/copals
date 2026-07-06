@@ -1,5 +1,5 @@
 import { assert_eq } from "std/test"
-import { to_json_array, json_value, json_value_or } from "json.ab"
+import { to_json_array, json_value, json_value_or, json_has } from "json.ab"
 import { temp_file_create } from "temp.ab"
 import { file_write } from "std/fs"
 
@@ -51,4 +51,23 @@ test "json_value_or: returns default when key missing" {
     const tmp = temp_file_create()?
     file_write(tmp, "\{\"name\": \"test-value\"}")?
     assert_eq(json_value_or(tmp, "absent", "fallback")?, "fallback")
+}
+
+test "json_has: returns true when jq filter matches" {
+    const tmp = temp_file_create()?
+    file_write(tmp, "\{\"x\": 1, \"y\": 2}")?
+    assert_eq(json_has(tmp, ".x == 1")?, true)
+}
+
+test "json_has: returns false when jq filter does not match" {
+    const tmp = temp_file_create()?
+    file_write(tmp, "\{\"x\": 1, \"y\": 2}")?
+    assert_eq(json_has(tmp, ".x == 2")?, false)
+}
+
+test "json_has: works with --arg variables" {
+    const tmp = temp_file_create()?
+    file_write(tmp, "\{\"name\": \"alice\"}")?
+    const result = $ {JQ} -r --arg n alice '.name == $n' {tmp} $ ?
+    assert_eq(result, "true")
 }

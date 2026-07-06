@@ -25,3 +25,8 @@ pub fun json_value_or(json_filepath: Text, key: Text, default: Text): Text? {
     }
     return val
 }
+
+pub fun json_has(json_filepath: Text, jq_filter: Text): Bool? {
+    const val = $ {JQ} -r {jq_filter} {json_filepath} $ ?
+    return val == "true"
+}

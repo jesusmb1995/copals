@@ -1,0 +1,19 @@
+import { LUA } from "../vendor.ab"
+import { env_vars_get_or_die } from "env.ab"
+import { echo_error } from "std/env"
+
+pub fun execute_lua_gen(script_name: Text, args: [Text]): Null? {
+    const [hooks_dir] = env_vars_get_or_die(["HOOKS_DIR"])
+    const script_path = "{hooks_dir}/{script_name}"
+    let args_str = ""
+    for arg in args {
+        args_str += " {arg}"
+    }
+    $ {LUA} {script_path} {args_str} $ ?
+}
+
+pub fun execute_lua_gen_or_die(script_name: Text, args: [Text]) {
+    execute_lua_gen(script_name, args) failed {
+        echo_error("execute_lua_gen: failed to run lua script {script_name}")
+    }
+}
