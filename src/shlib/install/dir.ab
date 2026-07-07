@@ -1,0 +1,14 @@
+import { dir_create } from "std/fs"
+import { echo_error } from "std/env"
+import { home } from "../env.ab"
+
+pub fun dir_create_at_home(rel: Text): Null? {
+    const h = home()?
+    dir_create("{h}/{rel}")?
+}
+
+pub fun dir_create_at_home_or_die(rel: Text): Null {
+    dir_create_at_home(rel) failed {
+        echo_error("failed to create directory at home/{rel}")
+    }
+}

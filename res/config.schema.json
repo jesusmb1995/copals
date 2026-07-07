@@ -9,18 +9,11 @@
     "base_image": {
       "type": "string"
     },
-    "i3": {
+    "features": {
       "type": "object",
-      "required": ["mode", "launcher"],
-      "properties": {
-        "mode": {
-          "type": "string"
-        },
-        "launcher": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": false
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "ai_tools": {
       "type": "object",
