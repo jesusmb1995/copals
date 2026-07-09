@@ -5,7 +5,7 @@ pub fun symlink_create_dir(origin: Text, destination: Text): Null? {
         echo("The directory {origin} doesn't exist")
         fail 1
     }
-    $ ln -fs {origin} {destination} $ ?
+    $ ln -fsn {origin} {destination} $ ?
 }
 
 // TODO test this

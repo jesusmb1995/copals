@@ -5,6 +5,7 @@ import { json_value, json_value_opt, json_list_value } from "json_config.ab"
 import { hash_dir, hash_dir_or_default, hash_arr, read_state_hash, write_state } from "../shlib/hash.ab"
 import { temp_file_create } from "../shlib/temp.ab"
 import { log_genstep } from "log_genstep.ab"
+import { J2 } from "../shlib/vendor.ab"
 import { replace_one } from "std/text"
 import { get_cache_dir } from "../shlib/cache.ab"
 
@@ -25,7 +26,7 @@ fun copy_repo(
     const hooks_src = "{user_dir}/repo-hooks"
     const gen_hook = "{hooks_src}/generate_{repo_id}.ab"
     if file_exists(gen_hook) {
-        $ SOURCE_PATH={src_path} TARGET_PATH={target_path} CACHE_PATH={cache_dir} REPO_ID={repo_id} GEN_DIR={gen_dir} HOOKS_DIR={hooks_src} CONFIG_FILE={config_file} amber {gen_hook} $ ?
+        $ SOURCE_PATH={src_path} TARGET_PATH={target_path} CACHE_PATH={cache_dir} REPO_ID={repo_id} GEN_DIR={gen_dir} HOOKS_DIR={hooks_src} CONFIG_FILE={config_file} J2_BIN={J2} amber {gen_hook} $ ?
         log_genstep("generated", target_path)
         return null
     }
