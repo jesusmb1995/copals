@@ -1,0 +1,11 @@
+pub fun tmux_has_session_prefix(prefix: Text): Bool {
+    let found = false
+    $ tmux list-sessions 2>/dev/null | grep -q "^{prefix}-" $ succeeded {
+        found = true
+    }
+    return found
+}
+
+pub fun tmux_kill_server(): Null? {
+    $ tmux kill-server 2>/dev/null $ ?
+}
