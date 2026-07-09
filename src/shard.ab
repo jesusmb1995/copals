@@ -73,9 +73,8 @@ pub fun shard(user_dir: Text, jsonnet_config: Text, ids: [Text]): Null? {
     build_and_run_test_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, shard_tag)?
 }
 
-pub fun shard_reuse(tag: Text, ids: [Text], as_root: Bool = false): Null? {
+pub fun shard_reuse(jsonnet_config: Text, tag: Text, ids: [Text], as_root: Bool = false): Null? {
     const user_dir = "user"
-    const jsonnet_config = "config_personal"
     const ids_csv = join(ids, ",")
     const shard_name = "shard_{join(ids, "_")}"
     const shard_bundle = temp_dir_create("{shard_name}-XXXXXX")?
@@ -115,17 +114,17 @@ pub fun shard_reuse(tag: Text, ids: [Text], as_root: Bool = false): Null? {
 }
 
 pub fun shard_main(args: [Text]): Null? {
-    if len(args) >= 2 and args[0] == "reuse" {
+    if len(args) >= 3 and args[0] == "reuse" {
         const want_root = has_flag(args, "--sudo")
-        let ids_args = args[2..len(args)]
+        let ids_args = args[3..len(args)]
         if want_root {
             ids_args = extract_flag(ids_args, "--sudo")?
         }
         if len(ids_args) < 1 {
-            echo_error("shard: usage: shard reuse <image_tag> <id> [<id>...]")
+            echo_error("shard: usage: shard reuse <jsonnet_config> <image_tag> <id> [<id>...]")
             fail 1
         }
-        shard_reuse(args[1], ids_args, want_root)?
+        shard_reuse(args[1], args[2], ids_args, want_root)?
         return null
     }
     if len(args) < 3 {
