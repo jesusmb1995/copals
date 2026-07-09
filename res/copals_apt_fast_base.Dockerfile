@@ -40,8 +40,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 RUN rm -f /tmp/*.db
 
 # ADD downloads apt-fast script (no external tools needed)
-ADD https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast /usr/local/sbin/apt-fast
-ADD https://raw.githubusercontent.com/ilikenwf/apt-fast/master/apt-fast.conf /etc/apt-fast.conf
+ADD https://raw.githubusercontent.com/ilikenwf/apt-fast/1f55b476b568f8589df8c040c2c1afd4a2384c4f/apt-fast /usr/local/sbin/apt-fast
+ADD https://raw.githubusercontent.com/ilikenwf/apt-fast/1f55b476b568f8589df8c040c2c1afd4a2384c4f/apt-fast.conf  /etc/apt-fast.conf
 RUN echo "4df71b8bba3d2553e3450833f6626560d5c5022e5866a6816b53f131c99904b2  /usr/local/sbin/apt-fast" | sha256sum --check \
  && echo "e545093738b6023cc4c811a0d253a3ddc99b45025d7cf6426133fe3d3c151fdc  /etc/apt-fast.conf" | sha256sum --check \
  && chmod +x /usr/local/sbin/apt-fast \
