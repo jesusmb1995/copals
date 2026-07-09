@@ -73,7 +73,7 @@ pub fun shard(user_dir: Text, jsonnet_config: Text, ids: [Text]): Null? {
     build_and_run_test_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, shard_tag)?
 }
 
-pub fun shard_reuse(jsonnet_config: Text, tag: Text, ids: [Text], as_root: Bool = false): Null? {
+pub fun shard_reuse(jsonnet_config: Text, tag: Text, ids: [Text], as_root: Bool = false, want_commit: Bool = false): Null? {
     const user_dir = "user"
     const ids_csv = join(ids, ",")
     const shard_name = "shard_{join(ids, "_")}"
@@ -110,21 +110,29 @@ pub fun shard_reuse(jsonnet_config: Text, tag: Text, ids: [Text], as_root: Bool 
         "podman", "0",
         [shard_bundle],
         ["/home/user/{target_dir}"])?
+    if want_commit {
+        $ podman commit {ctr} {tag} $ ?
+        echo("Committed container {ctr} to {tag}")
+    }
     run_reused_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, ctr)?
 }
 
 pub fun shard_main(args: [Text]): Null? {
     if len(args) >= 3 and args[0] == "reuse" {
         const want_root = has_flag(args, "--sudo")
+        const want_commit = has_flag(args, "--commit")
         let ids_args = args[3..len(args)]
         if want_root {
             ids_args = extract_flag(ids_args, "--sudo")?
+        }
+        if want_commit {
+            ids_args = extract_flag(ids_args, "--commit")?
         }
         if len(ids_args) < 1 {
             echo_error("shard: usage: shard reuse <jsonnet_config> <image_tag> <id> [<id>...]")
             fail 1
         }
-        shard_reuse(args[1], args[2], ids_args, want_root)?
+        shard_reuse(args[1], args[2], ids_args, want_root, want_commit)?
         return null
     }
     if len(args) < 3 {
