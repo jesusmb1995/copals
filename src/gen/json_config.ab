@@ -6,27 +6,25 @@ fun _json_value(config_file: Text, id: Text, key: Text): Text? {
     return $ {JQ} -re --arg id {id} --arg key {key} '.repositories[] | select(.id == "{id}") | .[\$key]' {config_file} $ ?
 }
 
+fun _json_array_value(config_file: Text, id: Text, key: Text): [Text]? {
+    return split_lines($ {JQ} -re --arg id {id} --arg key {key} '.repositories[] | select(.id == "{id}") | .[\$key][]' {config_file} $ ?)
+}
+
 pub fun json_value(config_file: Text, id: Text, key: Text): Text? {
   const result = _json_value(config_file, id, key) failed {
       echo("json_value failed: repo={id} key={key} file={config_file}")
-      fail status() 
+      fail status()
   }
   return result
 }
 
 pub fun json_value_opt(config_file: Text, id: Text, key: Text): Text {
   const result = _json_value(config_file, id, key) failed {
-    return "" 
+    return ""
   }
   return result
 }
 
 pub fun json_list_value(config_file: Text, id: Text, key: Text): [Text]? {
-  const splitted_raw_array = split_lines(_json_value(config_file, id, key)?)
-  if len(splitted_raw_array) >= 2 {
-    // Remove brackets [ ]
-    return splitted_raw_array[1..-1]
-  }
-  fail status()
+  return _json_array_value(config_file, id, key)?
 }
-
