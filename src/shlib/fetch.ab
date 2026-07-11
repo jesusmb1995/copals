@@ -11,6 +11,10 @@ pub fun download_tmp(url: Text): Text? {
     return target
 }
 
+pub fun url_status(url: Text): Text? {
+    return $ curl -sIL {url} | head -1 | tr -s ' ' | cut -d' ' -f2 $ ?
+}
+
 pub fun download_verified_url_to(url: Text, target: Text, expected_hash: Text): Null? {
     download_to(url, target) failed { return null }
     const actual = $ sha256sum {target} | cut -d' ' -f1 $ ?

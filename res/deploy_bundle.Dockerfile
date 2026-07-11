@@ -20,6 +20,7 @@ COPY --chown=${USERNAME}:${USERNAME} \
   "${HOME}/${DEPLOYABLE_COPALS_BUNDLE}"
 
 WORKDIR ${HOME}/${DEPLOYABLE_COPALS_BUNDLE}
+RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot-valid-until
 # Brew needs a tmpfs for lock files (overlayfs filename length issue).
 # /tmp as tmpfs ensures no apt-fast.lock from previous layer persists.
 RUN --mount=type=tmpfs,target=/tmp \

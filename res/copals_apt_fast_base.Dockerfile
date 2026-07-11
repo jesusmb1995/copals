@@ -6,6 +6,7 @@ FROM ${BASE} AS copals-apt-fast-base
 # Pin sources to the same snapshot as the aria2 debs.
 # Regenerate with: copals/res/gen-aria2-docker-section.sh
 RUN echo "deb http://snapshot.debian.org/archive/debian/20260704T120000Z testing main" > /etc/apt/sources.list
+RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot-valid-until
 
 # ---BEGIN auto-generated aria2 deps for snapshot 20260704T120000Z---
 ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/a/aria2/aria2_1.37.0+debian-4+b1_amd64.deb /tmp/aria2_1.37.0+debian-4+b1_amd64.deb
@@ -48,7 +49,6 @@ RUN echo "4df71b8bba3d2553e3450833f6626560d5c5022e5866a6816b53f131c99904b2  /usr
  && sed -i 's|^#_APTMGR=apt-get|_APTMGR=/usr/bin/apt-get|' /etc/apt-fast.conf
 
 # Keep using snapshot list, that pins versions to that date and keep container stable/reproducible
-# TODO this might bite back if snapshot becomes too old...
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked  \
   apt-fast update
 # update fetches faster than raw apt-get update

@@ -1,0 +1,28 @@
+import { replace_regex } from "std/text"
+import { url_status } from "../fetch.ab"
+import { echo_error } from "std/env"
+
+fun extract_extension_id(url: Text): Text {
+    if replace_regex(url, "^https?://[^/]+/.+/([^/]+)$", "", true) == url {
+        echo_error("malformed extension url: {url}")
+    }
+    return replace_regex(url, "^.*/([^/]+)$", "\\1", true)
+}
+
+pub fun install_chrome_extension(url: Text): Null? {
+    const id = extract_extension_id(url)
+    const http_code = url_status(url)?
+    if http_code != "200" {
+        echo_error("extension url returned HTTP {http_code} (expected 200): {url}")
+    }
+    const dir = "/etc/opt/chrome/policies/managed"
+    $ mkdir -p {dir} $ ?
+    $ chmod 755 /etc/opt/chrome $ ?
+    $ printf '\{"ExtensionInstallForcelist":["%s;https://clients2.google.com/service/update2/crx"]}\n' {id} > {dir}/vimium.json $ ?
+}
+
+pub fun install_chrome_extension_or_die(url: Text) {
+    install_chrome_extension(url) failed {
+        echo_error("failed to install chrome extension {url}")
+    }
+}
