@@ -1,4 +1,5 @@
 import { echo_error } from "std/env"
+import { temp_dir_create } from "std/fs"
 import { download_tmp } from "../fetch.ab"
 import { install_deb } from "./deb.ab"
 import { JQ } from "../vendor.ab"
@@ -32,5 +33,27 @@ pub fun install_github_deb(repo: Text, asset_suffix: Text): Text? {
 pub fun install_github_deb_or_die(repo: Text, asset_suffix: Text) {
     install_github_deb(repo, asset_suffix) failed {
         echo_error("failed to install {asset_suffix} from {repo}")
+    }
+}
+
+pub fun install_github_binary(repo: Text, asset_suffix: Text, binary_name: Text, install_dir: Text = "/usr/local/bin"): Null? {
+    const api = "https://api.github.com/repos/{repo}/releases/latest"
+    const rel = download_tmp(api)?
+    const url = $ {JQ} -r '.assets[] | select(.name | endswith("{asset_suffix}")) | .browser_download_url' {rel} $ ?
+    const tag = $ {JQ} -r .tag_name {rel} $ ?
+    if not tag_verified(repo, tag)? {
+        fail
+    }
+    const tarball = download_tmp(url)?
+    const tmp = temp_dir_create("gh-bin-XXXXXX")?
+    $ tar -xzf {tarball} -C {tmp} $ ?
+    $ install -m755 {tmp}/{binary_name} {install_dir} $ failed {
+        $ install -m755 {tmp}/*/{binary_name} {install_dir} $ ?
+    }
+}
+
+pub fun install_github_binary_or_die(repo: Text, asset_suffix: Text, binary_name: Text, install_dir: Text = "/usr/local/bin") {
+    install_github_binary(repo, asset_suffix, binary_name, install_dir) failed {
+        echo_error("failed to install {binary_name} from {repo}")
     }
 }
