@@ -32,6 +32,10 @@ pub fun rm_glob(pattern: Text, recursive: Bool = false): Null? {
     }
 }
 
+pub fun rm_force(path: Text): Null? {
+    $ rm -rf {path} $ ?
+}
+
 pub fun match_files(
     files: [Text],
     prefix: Text,

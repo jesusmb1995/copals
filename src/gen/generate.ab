@@ -1,7 +1,7 @@
 #!/usr/bin/env amber
 
 import { file_read, dir_create, dir_exists, temp_dir_create, file_exists } from "std/fs"
-import { unique_match_file_glob_or_fail, file_ext, abspath } from "../shlib/fs.ab"
+import { unique_match_file_glob_or_fail, file_ext, abspath, rm_force } from "../shlib/fs.ab"
 import { echo_success, echo_error } from "std/env"
 import { split_lines, parse_int, replace_regex, replace_one, split } from "std/text"
 import { temp_file_create } from "../shlib/temp.ab"
@@ -114,6 +114,11 @@ fun build_installer(
 }
 
 fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_run: Bool, user_dir: Text): Null? {
+    if force_run {
+        if file_exists("{installer_dir}/meta.json") {
+            rm_force(installer_dir)?
+        }
+    }
     dir_create(dest_dir)?
     dir_create(installer_dir)?
     const config_file = render_jsonnet_into_filepath(config_jsonnet)?
