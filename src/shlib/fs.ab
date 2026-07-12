@@ -36,6 +36,13 @@ pub fun rm_force(path: Text): Null? {
     $ rm -rf {path} $ ?
 }
 
+pub fun ensure_line_in_file(file: Text, line: Text): Null? {
+    $ grep -qF "{line}" "{file}" 2>/dev/null $ failed {
+        $ echo >> "{file}" $ ?
+        $ echo "{line}" >> "{file}" $ ?
+    }
+}
+
 pub fun match_files(
     files: [Text],
     prefix: Text,
