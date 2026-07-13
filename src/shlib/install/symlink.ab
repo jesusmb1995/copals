@@ -1,5 +1,5 @@
 import { home } from "../env.ab"
-import { dir_create } from "std/fs"
+import { dir_create, file_exists } from "std/fs"
 import { echo_error, echo_success } from "std/env"
 import { symlink_create_dir } from "../symlink.ab"
 
@@ -25,5 +25,34 @@ pub fun symlink_into_home_or_die(src: Text, rel_dest: Text): Text {
     const dest = symlink_into_home(src, rel_dest) failed {
         echo_error("deploy of {src} symlink {rel_dest}  into home failed")
     }
+    return dest
+}
+
+// Symlink a home-relative path to another home-relative path (both resolved
+// against home()). Works for files (e.g. bridging a data file from one config
+// location to the path a plugin expects).
+fun symlink_at_home(src_rel: Text, dest_rel: Text): Text? {
+    const h = home()?
+    const src = "{h}/{src_rel}"
+    const dest = "{h}/{dest_rel}"
+
+    if not file_exists(src) {
+        echo_error("symlink source {src} missing")
+        fail 1
+    }
+
+    const parent = _parent_dir(dest)?
+    dir_create(parent)?
+
+    $ ln -fsn {src} {dest} $ ?
+
+    return dest
+}
+
+pub fun symlink_at_home_or_die(src_rel: Text, dest_rel: Text): Text {
+    const dest = symlink_at_home(src_rel, dest_rel) failed {
+        echo_error("symlink {src_rel} -> {dest_rel} in home failed")
+    }
+
     return dest
 }
