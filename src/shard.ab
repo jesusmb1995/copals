@@ -111,8 +111,8 @@ pub fun shard_reuse(jsonnet_config: Text, tag: Text, ids: [Text], as_root: Bool 
         [shard_bundle],
         ["/home/user/{target_dir}"])?
     if want_commit {
-        $ podman commit {ctr} {tag} $ ?
-        echo("Committed container {ctr} to {tag}")
+        $ podman commit --squash {ctr} {tag} $ ?
+        echo("Committed container {ctr} to {tag} (squashed)")
     }
     run_reused_container(shard_bundle, enabled_ids, "podman", abspath(user_dir)?, ctr)?
 }
