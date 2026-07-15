@@ -1,5 +1,7 @@
 import { replace_regex } from "std/text"
 import { file_glob } from "std/fs"
+import { echo_error } from "std/env"
+import { JQ } from "vendor.ab"
 
 pub fun filename(path: Text): Text {
     return replace_regex(path, "^.*/", "")
@@ -40,6 +42,19 @@ pub fun ensure_line_in_file(file: Text, line: Text): Null? {
     $ grep -qF "{line}" "{file}" 2>/dev/null $ failed {
         $ echo >> "{file}" $ ?
         $ echo "{line}" >> "{file}" $ ?
+    }
+}
+
+pub fun rm_if_feature_not(config_file: Text, base_path: Text, feature: Text, expected: Text, rel_path: Text): Null? {
+    const val = trust $ {JQ} -r '.features.{feature} // "{expected}"' {config_file} $
+    if val != expected {
+        rm_force("{base_path}/{rel_path}")?
+    }
+}
+
+pub fun rm_if_feature_not_or_die(config_file: Text, base_path: Text, feature: Text, expected: Text, rel_path: Text) {
+    rm_if_feature_not(config_file, base_path, feature, expected, rel_path) failed {
+        echo_error("rm_if_feature_not: failed for feature {feature}")
     }
 }
 
