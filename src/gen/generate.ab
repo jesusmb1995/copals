@@ -81,6 +81,14 @@ fun process_repos(dest_dir: Text, config_file: Text, force_run: Bool, user_dir: 
     return repo_ids
 }
 
+fun run_generate_post(hooks_src: Text, dest_dir: Text, config_file: Text): Null? {
+    const post_hook = "{hooks_src}/generate_post.ab"
+    if file_exists(post_hook) {
+        $ SOURCE_IGNORED="" DEST_DIR={dest_dir} CONFIG_FILE={config_file} J2_BIN={JQ} amber {post_hook} $ ?
+        log_genstep("post-generated", dest_dir)
+    }
+}
+
 fun build_installer(
     repo_ids: [Text],
     hooks_src: Text, out_dir: Text, 
@@ -125,6 +133,7 @@ fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_ru
     render_metadata(config_file, "{installer_dir}/meta.json")?
     const ids = process_repos(dest_dir, config_file, force_run, user_dir)?
     const hooks_src = "{user_dir}/repo-hooks"
+    run_generate_post(hooks_src, dest_dir, config_file)?
     build_installer(ids, hooks_src, installer_dir, config_file)?; 
     render_jinja_tree(config_file, dest_dir, dest_dir)?
 }
