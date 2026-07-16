@@ -25,6 +25,7 @@ While tools like Ansible, GNU Stow, and chezmoi offer configuration management, 
 ## Future Work
 - **Stow-like Amber Manager (`stowerab`)**: Develop a lightweight, Stow-compatible dotfile symlink manager written natively in Amber, integrating it directly into the Copals workflow to manage simple files without scattering configurations.
 - **Shareable & Modular Plugin System**: Design a mechanism to easily import, share, and reuse configurations and hooks from other users' repositories.
+- **Lean Dependency Footprint**: Minimize optional build-time dependencies, removing tools like `jsonschema`, Lua, and `bashunit` to keep only the absolute essentials (`minijinja-cli` + `jsonnet` + `amber` + `jq`), reducing the compiler footprint to around 19 MB uncompressed.
 - **Multi-OS & Package Manager Support**: Expand tests, hooks, and built-in scripts to support other operating systems (e.g., macOS, Alpine, Arch) and alternative package managers.
 
 ## Basic Usage
