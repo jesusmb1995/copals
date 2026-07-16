@@ -12,7 +12,8 @@ import { get_filename_without_prefix } from "../shlib/regex.ab"
 import { render_j2_template } from "render-job.ab"
 import { compile_amber_job } from "compile-job.ab"
 import { write_json_array } from "../shlib/json.ab"
-import { JQ, JSONNET, JSONSCHEMA } from "../shlib/vendor.ab"
+import { json_value } from "json_config.ab"
+import { JQ, JSONNET, JSONSCHEMA, LUA } from "../shlib/vendor.ab"
 import { jsonnet_render_tla_file } from "../shlib/jsonnet.ab"
 import { symlink_create_dir } from "../shlib/symlink.ab"
 import { has_flag } from "../shlib/flag.ab"
@@ -89,6 +90,32 @@ fun run_generate_post(hooks_src: Text, dest_dir: Text, config_file: Text): Null?
     }
 }
 
+// Per-repo post-render hooks: run AFTER render_jinja_tree so each repo's tree
+// is fully rendered (plain files, .j2 stripped). Mirrors generate_{repo}.ab but
+// fires at the end of generation. Naming generate_{repo}_postrender.* colocates
+// the hook next to generate_{repo}.* in the tree. A repo may ship either
+// generate_{repo}_postrender.ab (full amber hook) OR just
+// generate_{repo}_postrender.lua -- when only the .lua exists, copals runs it
+// directly with LUA, no .ab proxy needed. The hook receives TARGET_PATH =
+// {dest_dir}/{target}.
+fun run_generate_postrender(hooks_src: Text, dest_dir: Text, config_file: Text, repo_ids: [Text]): Null? {
+    // TODO: should also use parallel tasks for faster processing
+    for repo_id in repo_ids {
+        const ab_hook = "{hooks_src}/generate_{repo_id}_postrender.ab"
+        const lua_hook = "{hooks_src}/generate_{repo_id}_postrender.lua"
+        if file_exists(ab_hook) or file_exists(lua_hook) {
+            const target = json_value(config_file, repo_id, "target")?
+            const target_path = "{dest_dir}/{target}"
+            if file_exists(ab_hook) {
+                $ SOURCE_IGNORED="" DEST_DIR={dest_dir} CONFIG_FILE={config_file} REPO_ID={repo_id} TARGET_PATH={target_path} HOOKS_DIR={hooks_src} J2_BIN={JQ} amber {ab_hook} $ ?
+            } else {
+                $ DEST_DIR={dest_dir} CONFIG_FILE={config_file} REPO_ID={repo_id} TARGET_PATH={target_path} HOOKS_DIR={hooks_src} {LUA} {lua_hook} $ ?
+            }
+            log_genstep("postrendered", target_path)
+        }
+    }
+}
+
 fun build_installer(
     repo_ids: [Text],
     hooks_src: Text, out_dir: Text, 
@@ -136,6 +163,7 @@ fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_ru
     run_generate_post(hooks_src, dest_dir, config_file)?
     build_installer(ids, hooks_src, installer_dir, config_file)?; 
     render_jinja_tree(config_file, dest_dir, dest_dir)?
+    run_generate_postrender(hooks_src, dest_dir, config_file, ids)?
 }
 
 pub fun main_generate(args): Null? {
