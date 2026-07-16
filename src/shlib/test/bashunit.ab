@@ -21,8 +21,16 @@ pub fun assert_file_exists(path: Text) {
     trust $ assert_file_exists "{path}" $
 }
 
+pub fun assert_file_not_exists(path: Text) {
+    trust $ assert_file_not_exists "{path}" $
+}
+
 pub fun assert_file_at_home_exists(rel_path: Text) {
     assert_file_exists(trust $ echo ~ $ + "/{rel_path}")
+}
+
+pub fun assert_file_at_home_not_exists(rel_path: Text) {
+    assert_file_not_exists(trust $ echo ~ $ + "/{rel_path}")
 }
 
 pub fun assert_directory_exists(path: Text) {
@@ -74,8 +82,16 @@ pub fun assert_file_matches(file: Text, pattern: Text) {
     trust $ grep -Eq "{pattern}" "{file}" && assert_true true || assert_false "{file} does not match /{pattern}/" $
 }
 
+pub fun assert_file_at_home_matches(rel_path: Text, pattern: Text) {
+    assert_file_matches(trust $ echo ~ $ + "/{rel_path}", pattern)
+}
+
 pub fun assert_file_not_contains(file: Text, substring: Text) {
     trust $ grep -Fq "{substring}" "{file}" 2>/dev/null && assert_false "{file} unexpectedly contains '{substring}'" || assert_true true $
+}
+
+pub fun assert_file_at_home_not_contains(rel_path: Text, substring: Text) {
+    assert_file_not_contains(trust $ echo ~ $ + "/{rel_path}", substring)
 }
 
 pub fun assert_is_executable(path: Text) {
