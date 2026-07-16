@@ -14,6 +14,19 @@ Copals is a simple yet flexible approach to managing all your packages and confi
 - Install file is easily auditable (e.g. for security concerns). By using "generation hooks" you can pull sources ahead of time instead of installing from remotes at deploy time.
 - Provides necessary plumbing to develop and test new configurations.
 
+## Why Copals? (vs. Ansible, Stow, Chezmoi)
+
+While tools like Ansible, GNU Stow, and chezmoi offer configuration management, Copals differs in several key aspects:
+
+- **Zero Runtime Dependencies**: Unlike chezmoi (which requires Go or precompiled binaries) or GNU Stow (which requires Perl), Copals transpiles down to pure POSIX-compliant Bash using the Amber programming language. At install-time, the target environment needs nothing but `bash`.
+- **Integrated Container Testing**: Copals bridges the gap between dotfiles and system provisioning by offering integrated Podman/Docker container-based testing (`copals shard`). Tests for your packages and hooks are compiled and asserted cleanly in an isolated system prior to deploying to your host.
+- **Pre-fetch & Audit Pipeline**: By utilizing compile-time Jinja2 rendering and generation hooks, administrators can resolve assets, binaries, and configurations ahead of time. The output is a single, self-contained, auditable `install.sh`.
+
+## Future Work
+- **Stow-like Amber Manager (`stowerab`)**: Develop a lightweight, Stow-compatible dotfile symlink manager written natively in Amber, integrating it directly into the Copals workflow to manage simple files without scattering configurations.
+- **Shareable & Modular Plugin System**: Design a mechanism to easily import, share, and reuse configurations and hooks from other users' repositories.
+- **Multi-OS & Package Manager Support**: Expand tests, hooks, and built-in scripts to support other operating systems (e.g., macOS, Alpine, Arch) and alternative package managers.
+
 ## Basic Usage
 
 > [!WARNING]
