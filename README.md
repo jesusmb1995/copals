@@ -4,8 +4,8 @@
 
 Copals is a simple yet flexible approach to managing all your packages and configurations and easily deploy them. For example, you can use it to have a single place/repo where you modify all your Linux development setup (installation of AI tools, skills, neovim configuration, etc.). Copals heavily leverages Amber language which compiles into bash and optionally `podman` for consistent installation and testing.a
 
-> [!NOTICE]
-> Even though you can theoreticaly easily deploy into non-debian distributions. Currently the framework is tuned heavily for debian:testing target. Including the podman images used for testing. 
+> [!WARNING]
+> Current version is pre-alpha and experimental, expect missing features and large changes (including API breakings) between updates. Even though you can theoreticaly easily deploy into non-debian distributions. Currently the framework is tuned heavily for debian:testing target. Including the podman images used for testing. 
 
 ## Core Features
 - Bundle all your configuration (installed packages, dot files, ...) in a single `install.sh`.
@@ -28,9 +28,6 @@ While tools like Ansible, GNU Stow, and chezmoi offer configuration management, 
 - **Multi-OS & Package Manager Support**: Expand tests, hooks, and built-in scripts to support other operating systems (e.g., macOS, Alpine, Arch) and alternative package managers.
 
 ## Basic Usage
-
-> [!WARNING]
-> Current version is pre-alpha and very experimental.
 
 ```
 curl https://raw.githubusercontent.com/jesusmb1995/copals/main/install.sh | sh -s podman
