@@ -1,4 +1,4 @@
 pub fun get_meta_bool(key: Text): Bool {
-    const jq_out = trust $ jq -r '.{key} or false' /tests/meta.json 2>/dev/null $
+    const jq_out = trust $ jq -r '.{key} | if . == true or . == "true" then "true" else "false" end' /tests/meta.json 2>/dev/null $
     return jq_out == "true"
 } // TODO move other etest scripts here to this folder
