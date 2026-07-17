@@ -1,15 +1,25 @@
-import { dir_exists } from "std/fs"
+import { dir_exists, file_exists } from "std/fs"
 
 const PROJECT_ROOT = pwd()
 const project_vendor = "{PROJECT_ROOT}/copals/vendor"
 const installed_vendor = "/usr/lib/copals/vendor"
 
+// The installed vendor dir is authoritative when copals runs inside its own
+// container: the host repo is bind-mounted at the same absolute path, so the
+// project vendor dir also "exists" but its tools are only populated inside the
+// image. Prefer the installed tree whenever it actually holds the binaries.
 fun resolve_vendor_dir(): Text {
-    if dir_exists(project_vendor) {
+    if dir_exists(installed_vendor) and file_exists("{installed_vendor}/jsonnet") {
+        return installed_vendor
+    }
+    if dir_exists(project_vendor) and file_exists("{project_vendor}/jsonnet") {
         return project_vendor
     }
     if dir_exists(installed_vendor) {
         return installed_vendor
+    }
+    if dir_exists(project_vendor) {
+        return project_vendor
     }
     return ""
 }

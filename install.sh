@@ -73,8 +73,13 @@ EOF
     # TODO extensions, podman within the container? To all copals commands without having to install anything on host...
 
     COPALS_IMAGE="${COPALS_IMAGE:-copals:dev}"
-    podman build -t "$COPALS_IMAGE" "$@" "$self_dir"
-    echo "built image $COPALS_IMAGE"
+    # The vendored tools (jsonnet, jq, jsonschema, ...) are x86_64 binaries, so
+    # the image must be built linux/amd64. On Apple Silicon run
+    # scripts/setup-podman-machine.sh once to enable Rosetta (stable x86_64),
+    # otherwise amd64 containers fall back to qemu-user which crashes Go tools.
+    COPALS_BUILD_ARCH="${COPALS_BUILD_ARCH:-amd64}"
+    podman build --arch "$COPALS_BUILD_ARCH" -t "$COPALS_IMAGE" "$@" "$self_dir"
+    echo "built image $COPALS_IMAGE ($COPALS_BUILD_ARCH)"
 }
 
 mode="${1:-help}"

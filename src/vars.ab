@@ -1,11 +1,25 @@
 pub const PROJECT_ROOT = pwd() 
 
+import { file_exists } from "std/fs"
+
 // TODO must be handlded without repo root being outside copals...
 const _REPO_GEN_DIR = "{PROJECT_ROOT}/copals"
 pub const GEN_DIR="{_REPO_GEN_DIR}"
 pub const GEN_SCRIPTS_DIR="{_REPO_GEN_DIR}/src/gen"
 pub const SHLIB_DIR="{_REPO_GEN_DIR}/src/shlib"
-pub const BASHUNIT="{PROJECT_ROOT}/copals/vendor/lib/bashunit"
+
+// bashunit lives in the vendored tree. When copals runs inside its own
+// container image the installed tree at /usr/lib/copals is authoritative
+// (the bind-mounted host repo's vendor/ is not populated); prefer it.
+const _INSTALLED_BASHUNIT = "/usr/lib/copals/vendor/lib/bashunit"
+const _HOST_BASHUNIT = "{PROJECT_ROOT}/copals/vendor/lib/bashunit"
+pub fun bashunit_path(): Text {
+    if file_exists(_INSTALLED_BASHUNIT) {
+        return _INSTALLED_BASHUNIT
+    }
+    return _HOST_BASHUNIT
+}
+pub const BASHUNIT = bashunit_path()
 
 pub const RESOURCES_DIR="{_REPO_GEN_DIR}/res"
 pub const SCHEMA_FILE="{RESOURCES_DIR}/config.schema.json"

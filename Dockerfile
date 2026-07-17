@@ -14,7 +14,7 @@ RUN ["/bin/sh", "/copals/install.sh", "local"]
 
 FROM alpine:${ALPINE_VERSION}
 RUN --mount=type=cache,target=/var/cache/apk/ \
-    apk add --no-cache rsync bash
+    apk add --no-cache rsync bash podman containers-common
 COPY --from=builder /usr/bin/copals /usr/bin/copals
 COPY --from=builder /usr/lib/copals /usr/lib/copals
 ENTRYPOINT ["copals"]

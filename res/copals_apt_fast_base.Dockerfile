@@ -8,35 +8,13 @@ FROM ${BASE} AS copals-apt-fast-base
 RUN echo "deb http://snapshot.debian.org/archive/debian/20260704T120000Z testing main" > /etc/apt/sources.list
 RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot-valid-until
 
-# ---BEGIN auto-generated aria2 deps for snapshot 20260704T120000Z---
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/a/aria2/aria2_1.37.0+debian-4+b1_amd64.deb /tmp/aria2_1.37.0+debian-4+b1_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/a/aria2/libaria2-0_1.37.0+debian-4+b1_amd64.deb /tmp/libaria2-0_1.37.0+debian-4+b1_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/c/c-ares/libcares2_1.34.6-1+b1_amd64.deb /tmp/libcares2_1.34.6-1+b1_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/g/gnutls28/libgnutls30t64_3.8.13-1_amd64.deb /tmp/libgnutls30t64_3.8.13-1_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/libs/libssh2/libssh2-1t64_1.11.1-4_amd64.deb /tmp/libssh2-1t64_1.11.1-4_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/s/sqlite3/libsqlite3-0_3.46.1-9+b1_amd64.deb /tmp/libsqlite3-0_3.46.1-9+b1_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/libx/libxml2/libxml2-16_2.15.3+dfsg-1_amd64.deb /tmp/libxml2-16_2.15.3+dfsg-1_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/libi/libidn2/libidn2-0_2.3.8-5_amd64.deb /tmp/libidn2-0_2.3.8-5_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/p/p11-kit/libp11-kit0_0.26.2-3_amd64.deb /tmp/libp11-kit0_0.26.2-3_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/libt/libtasn1-6/libtasn1-6_4.21.0-2+b1_amd64.deb /tmp/libtasn1-6_4.21.0-2+b1_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/libu/libunistring/libunistring5_1.4.2-1_amd64.deb /tmp/libunistring5_1.4.2-1_amd64.deb
-ADD http://snapshot.debian.org/archive/debian/20260704T120000Z/pool/main/libf/libffi/libffi8_3.5.2-4_amd64.deb /tmp/libffi8_3.5.2-4_amd64.deb
+# ---BEGIN aria2 install (arch-agnostic; was hardcoded amd64 debs)---
+# Installs aria2 from the pinned snapshot sources using the native arch so the
+# base builds on both amd64 and arm64 hosts.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    echo "fdb69eea9c5b7267e079419ace60dd1b2c66136253f279d7e18baceb6e626afd  /tmp/aria2_1.37.0+debian-4+b1_amd64.deb" | sha256sum --check \
-     && echo "a7982e5e93dcbebfcd593474dc07fc2df815ed5d78ad3265e2f5a1304fad2841  /tmp/libaria2-0_1.37.0+debian-4+b1_amd64.deb" | sha256sum --check \
-     && echo "2b7dd3c2b8f34ae1466de09f91722724d9515b495f27ae99d2369aad1da4885d  /tmp/libcares2_1.34.6-1+b1_amd64.deb" | sha256sum --check \
-     && echo "81f7f28a3968228293cabf6a92f7d6b2a8807f64ccf57469f2ce9a06b7b226af  /tmp/libgnutls30t64_3.8.13-1_amd64.deb" | sha256sum --check \
-     && echo "a6cbc3dfd229b492fa065aaa56492452dba27b084c35af8ce1f6287c77cbdb62  /tmp/libssh2-1t64_1.11.1-4_amd64.deb" | sha256sum --check \
-     && echo "df8932f6c41e78bc33a4f61251c39777ed0681f73c9c91cd8520068a9c07a8b6  /tmp/libsqlite3-0_3.46.1-9+b1_amd64.deb" | sha256sum --check \
-     && echo "b920f80146fb87f38402508ce1abda303bd3c8f4acb1f8c1b9b2f68a3c11e478  /tmp/libxml2-16_2.15.3+dfsg-1_amd64.deb" | sha256sum --check \
-     && echo "25a38f7d9ba5bb3daf47a21ad5d348303e602f3c9037a48d621683fe87e7ce28  /tmp/libidn2-0_2.3.8-5_amd64.deb" | sha256sum --check \
-     && echo "987bc1f26a1e3c3e214723b78aabd50a9b301f038100b88f4a0fd5fa2938feb8  /tmp/libp11-kit0_0.26.2-3_amd64.deb" | sha256sum --check \
-     && echo "097059368c29f6bac5253cc9a4ee3b8c2f449326de016feddf5a00b896fabe49  /tmp/libtasn1-6_4.21.0-2+b1_amd64.deb" | sha256sum --check \
-     && echo "509fb596f6b4de34f1d9cb5a0001abc3c6c51f4800e908ef888262ebdaaefa3b  /tmp/libunistring5_1.4.2-1_amd64.deb" | sha256sum --check \
-     && echo "1883c3b720014b5fd7bed17f3a27afdc5af079517d762192f687b8dd407e5820  /tmp/libffi8_3.5.2-4_amd64.deb" | sha256sum --check \
-     && dpkg -i /tmp/*.deb || apt-get install -f -y
-# ---END auto-generated aria2 deps---
+    apt-get update && apt-get install -y --no-install-recommends aria2
+# ---END aria2 deps---
 
 RUN rm -f /tmp/*.db
 
