@@ -168,6 +168,19 @@ image_exists() {
     command -v podman >/dev/null 2>&1 && podman image exists "$COPALS_IMAGE" 2>/dev/null
 }
 
+# Clone user repos on the HOST (not inside the container) so git credentials
+# are available. Uses the copals container only to render the jsonnet config.
+run_fetch_repos() {
+    for candidate in "/usr/lib/copals" "$self_dir"; do
+        fetch_script="$candidate/src/fetch_user_repos.sh"
+        if [ -f "$fetch_script" ]; then
+            exec sh "$fetch_script" "$@"
+        fi
+    done
+    printf 'copals: could not find src/fetch_user_repos.sh\n' >&2
+    exit 1
+}
+
 # Dispatch when executed directly (not sourced).
 case "${0##*/}" in
     copals.sh|copals)
@@ -179,6 +192,11 @@ case "${0##*/}" in
             # the host daemon via CONTAINER_HOST instead.
             run_local "$@"
         else
+            # user-clone runs on the host directly (needs git credentials).
+            if [ "${1:-}" = "user-clone" ]; then
+                shift
+                run_fetch_repos "$@"
+            fi
             case "$COPALS_RUN" in
                 local) run_local "$@" ;;
                 container) run_container "$@" ;;

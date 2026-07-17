@@ -26,6 +26,52 @@ copals pipeline <user_dir> <jsonnet_config> <bundle_dir>
 
 Supports `-f`/`--force` for generate and `--reuse` for container build.
 
+## Fetching User Repos (`user-clone`)
+
+Repos declared with `clone: true` and a `url` in `repos.libsonnet` are not
+bundled with copals — they must be cloned from their remote before generation
+can process them. The `user-clone` command handles this:
+
+```
+copals user-clone <user_dir> <config_name>
+```
+
+It runs **on the host** (never inside the container) so that your local git
+credentials, SSH keys, and credential helpers are used for private repos. The
+copals container is used only to render the jsonnet config and extract repo
+metadata; the actual `git clone` executes here.
+
+Typical workflow:
+
+```
+# 1. Clone repos (run once, repos persist under user/repos/)
+copals user-clone user config_personal
+
+# 2. Generate + build + test
+copals pipeline user config_personal /tmp/bundle
+```
+
+### Git Credentials for Private Repos
+
+`user-clone` uses whatever git authentication is already configured on your
+host. Ensure you can clone private repos manually first:
+
+```
+git clone https://github.com/yourorg/your-private-repo.git /tmp/test
+```
+
+If that prompts for a password, set up one of:
+
+- **HTTPS with credential helper** (recommended):
+  ```
+  git config --global credential.helper osxkeychain   # macOS
+  git config --global credential.helper store          # Linux
+  ```
+  Then clone once interactively — credentials are cached for future clones.
+
+- **SSH keys**: use SSH URLs in `repos.libsonnet` (`url: 'git@github.com:...'`)
+  and ensure your SSH key is added to GitHub and `ssh-agent`.
+
 ## Content Caching
 
 During generation each repository is content-hashed (SHA256 of directory + `impl` choice). If unchanged, rsync is skipped. State files are stored under `~/.cache/jbdt-process-repo/generate_state/`.

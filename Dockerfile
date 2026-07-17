@@ -24,8 +24,10 @@ RUN ["/bin/sh", "/copals/install.sh", "local"]
 
 # TODO REVIEW: minimal approach would be to download zip directly rather than git clone
 FROM alpine:${ALPINE_VERSION} AS copals-base
+# TODO: replace full git with a minimal git-clone client (e.g. libgit2 or a
+# static busybox-git) to shrink the image. Full apk git is ~20 MiB.
 RUN --mount=type=cache,target=/var/cache/apk/ \
-    apk add --no-cache rsync bash git curl
+    apk add --no-cache rsync bash curl git
 COPY --from=builder /usr/bin/copals /usr/bin/copals
 COPY --from=builder /usr/lib/copals /usr/lib/copals
 
