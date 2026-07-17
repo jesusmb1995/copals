@@ -47,7 +47,7 @@ install_local() {
 
     cp -R "$self_dir/src/." "$lib_dir/src/"
     cp -R "$self_dir/vendor/." "$lib_dir/vendor/"
-    cp "$self_dir/config.schema.json" "$lib_dir/"
+    cp "$self_dir/res/config.schema.json" "$lib_dir/"
 
     install -m 0755 "$self_dir/copals.sh" "$bin_dir/copals"
 
