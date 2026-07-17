@@ -22,9 +22,10 @@ COPY . /copals/
 COPY --from=downloader /tmp/vendor /copals/vendor
 RUN ["/bin/sh", "/copals/install.sh", "local"]
 
+# TODO REVIEW: minimal approach would be to download zip directly rather than git clone
 FROM alpine:${ALPINE_VERSION} AS copals-base
 RUN --mount=type=cache,target=/var/cache/apk/ \
-    apk add --no-cache rsync bash
+    apk add --no-cache rsync bash git curl
 COPY --from=builder /usr/bin/copals /usr/bin/copals
 COPY --from=builder /usr/lib/copals /usr/lib/copals
 

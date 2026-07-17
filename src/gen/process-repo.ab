@@ -8,6 +8,7 @@ import { log_genstep } from "log_genstep.ab"
 import { J2 } from "../shlib/vendor.ab"
 import { replace_one } from "std/text"
 import { get_cache_dir } from "../shlib/cache.ab"
+import { has_cmd } from "../shlib/cmd.ab"
 
 const CHANGE_MARK_DIR = temp_dir_create("jbdt-changes.XXXXXX", false) failed {
     "/tmp"
@@ -54,6 +55,16 @@ pub fun process_repo(config_file: Text, gen_dir: Text, repo_id: Text, dest_dir: 
     const repos_dir = "{user_dir}/repos"
 
     const src_path = "{repos_dir}/{repo_id}"
+
+    // Auto-clone repos whose source directory is missing but have a url.
+    if not dir_exists(src_path) {
+        const url = json_value_opt(config_file, repo_id, "url")
+        if url != "" and has_cmd("git") {
+            $ git clone --depth 1 {url} {src_path} $ ?
+            log_genstep("cloned", src_path)
+        }
+    }
+
     const impl_choice = json_value_opt(config_file, repo_id, "impl")
     const new_hash = hash_arr([hash_dir_or_default(src_path), impl_choice])?
 
