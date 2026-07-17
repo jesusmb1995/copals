@@ -89,7 +89,6 @@ EOF
 
     podman build --arch "$COPALS_BUILD_ARCH" \
         --build-arg "PODMAN_STAGE=$PODMAN_STAGE" \
-        --build-arg "INSTALL_PODMAN=${INSTALL_PODMAN:-true}" \
         -t "$COPALS_IMAGE" "$@" "$self_dir"
     echo "built image $COPALS_IMAGE ($COPALS_BUILD_ARCH, podman=$INSTALL_PODMAN)"
 }
