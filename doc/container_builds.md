@@ -13,7 +13,7 @@
 
 - `container build <bundle_dir>` — builds image from generated bundle. `--reuse` updates an existing image in-place using `podman commit`.
 - `container test <user_dir> <bundle_dir> [repo_id...]` — builds test container, runs bashunit tests (regular + screenshot), mounts golden/generated screenshot directories. Filters to specified repos or runs all from `meta.json`.
-- `container launch-window <bundle_dir>` — starts Xephyr, runs i3 inside container.
+- `container launch-window <image[:tag]>` — launches i3 inside the container. On Linux starts Xephyr (nested window); on macOS runs Xvfb + i3 + x11vnc and opens TigerVNC to `127.0.0.1:<port>` (Screen Sharing no longer speaks plain VNC on macOS 26; `brew install --cask tigervnc-viewer`). Flags: `--geometry WxHxD`, `--port N`.
 
 ## Runtime Support (`shlib/container.ab`)
 

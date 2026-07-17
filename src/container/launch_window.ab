@@ -1,24 +1,49 @@
 #!/usr/bin/env amber
-// launch.ab - Start a native Xephyr window and launch i3 inside a container.
+// launch.ab - Launch i3 inside a container and view it on the host.
+//
+// Transport is selected by host OS:
+//   - Linux : Xephyr nested X window on the host, i3 connects to it via a
+//             shared /tmp/.X11-unix socket (software rendering).
+//   - macOS : VNC. The container runs Xvfb + i3 + x11vnc, the host connects
+//             with a VNC client (TigerVNC's `vncviewer`; macOS 26 Screen Sharing
+//             no longer speaks plain VNC). Connect to 127.0.0.1:<port>.
+//             Software rendering is mandatory: the podman machine VM (applehv)
+//             exposes no GPU to Linux guests.
+//
+// TODO: copals should install these display deps directly via a few reusable
+// preset hooks (e.g. a copals-provided "gui-vnc" preset) rather than relying
+// on the user's UI apt hook to bolt on x11vnc/xvfb. See the stopgap note in
+// user/repo-hooks/install_apt_essential_ui.ab.j2.
 //
 // Usage:
-//   ./launch.ab <image[:tag]> [--home <dir>]
-// Example:
-//   amber distrobox/launch.ab jberlanga-devtools:latest
+//   launch_window.ab <image[:tag]> [--geometry WxHxD] [--port N]
+// Examples:
+//   amber launch_window.ab jberlanga-devtools:latest
+//   amber launch_window.ab jberlanga-devtools:latest --geometry 1920x1080x24 --port 5901
 // TODO this is launched on the host, must adapt copals.sh to build (e.g. through container) and execute compiled sh directly at host
 
 import { parse_int, split } from "std/text"
-import { echo_warning } from "std/env"
+import { echo_warning, echo_error } from "std/env"
 import { require_or_die } from "../shlib/cmd.ab"
 import { min_int } from "../shlib/math.ab"
 import { flag_value } from "../shlib/flag.ab"
 import { pkill_exact, pkill_glob } from "../shlib/process.ab"
+import { is_macos } from "../shlib/os.ab"
 
 const MAX_WIDTH = 1680
 const MAX_HEIGHT = 1050
 const XEPHYR_DISPLAY = ":2"
 
+// VNC defaults (macOS). Geometry is WxHxDepth as Xvfb expects.
+const DEFAULT_VNC_GEOMETRY = "1680x1050x24"
+const DEFAULT_VNC_PORT = 5900
+const VNC_DISPLAY = ":0"
+
 // abandoned x11docker due to no gpu support for alacritty
+
+// ---------------------------------------------------------------------------
+// Linux / Xephyr backend
+// ---------------------------------------------------------------------------
 
 // Caps host screen at MAX_WIDTH x MAX_HEIGHT.
 fun compute_resolution(): Text? {
@@ -46,7 +71,9 @@ fun xephyr_screen(resolution: Text, display: Text): Null? {
     $ sleep 2 $ ?
 }
 
-fun launch(image: Text): Null? {
+fun launch_xephyr(image: Text): Null? {
+    require_or_die("Xephyr")
+    require_or_die("xdpyinfo")
     const resolution = compute_resolution()?
     cleanup_stale_display()
 
@@ -66,19 +93,184 @@ fun launch(image: Text): Null? {
     trust pkill_glob("Xephyr.*{XEPHYR_DISPLAY}")
 }
 
+// ---------------------------------------------------------------------------
+// macOS / VNC backend
+// ---------------------------------------------------------------------------
+
+// Poll a local TCP port until something accepts (x11vnc is up) or timeout.
+fun wait_for_port(port: Int, timeout_secs: Int): Bool {
+    let i = 0
+    while i < timeout_secs * 2 {
+        $ nc -z 127.0.0.1 {port} >/dev/null 2>&1 $ succeeded {
+            return true
+        }
+        trust $ sleep 0.5 $
+        i += 1
+    }
+    return false
+}
+
+// True while a TigerVNC viewer is connected to the host VNC port. Used to
+// auto-tear-down the container when the user closes the viewer window.
+fun viewer_alive(port: Int): Bool {
+    let alive = false
+    $ pgrep -f "vncviewer 127.0.0.1::{port}" >/dev/null 2>&1 $ succeeded {
+        alive = true
+    }
+    return alive
+}
+
+// Wait until the TigerVNC viewer process has actually appeared (it takes a
+// moment to spawn after launch). Prevents the monitor loop from tearing down
+// the container during the viewer's startup race.
+fun wait_for_viewer(port: Int, timeout_secs: Int): Bool {
+    let i = 0
+    while i < timeout_secs * 2 {
+        if viewer_alive(port) {
+            return true
+        }
+        trust $ sleep 0.5 $
+        i += 1
+    }
+    return false
+}
+
+// Open the host's VNC viewer.
+//
+// macOS 26 (Tahoe) Screen Sharing no longer speaks plain VNC (`open vnc://...`
+// fails), so we use TigerVNC's `vncviewer`, which works. Pass the raw TCP port
+// with the double-colon form (`host::port`). If TigerVNC is missing, print the
+// `brew install --cask tigervnc-viewer` command instead of failing.
+fun open_vnc_viewer(port: Int): Null {
+    // Preferred: TigerVNC app bundle (brew --cask tigervnc-viewer).
+    const tvnc = "/Applications/TigerVNC.app/Contents/MacOS/vncviewer"
+    let has_tvnc = false
+    $ test -x "{tvnc}" $ succeeded {
+        has_tvnc = true
+    }
+    if has_tvnc {
+        trust $ {tvnc} 127.0.0.1::{port} $
+        echo("launch: viewer opened. TigerVNC 1.16 keys (NOT F8):")
+        echo("        Ctrl+Alt+G  grab keyboard (i3 Super/Alt reach remote)")
+        echo("        Ctrl+Alt+Enter  toggle full-screen")
+        echo("        Ctrl+Alt+M  viewer menu")
+    }
+    // Fallback: vncviewer on PATH (other platforms / custom installs).
+    let has_vncviewer = false
+    $ command -v vncviewer >/dev/null 2>&1 $ succeeded {
+        has_vncviewer = true
+    }
+    if has_vncviewer {
+        trust $ vncviewer 127.0.0.1::{port} $
+    }
+    if not has_tvnc and not has_vncviewer {
+        echo("launch: no VNC viewer found. Install one and connect to 127.0.0.1:{port}:")
+        echo("        brew install --cask tigervnc-viewer")
+        echo("        /Applications/TigerVNC.app/Contents/MacOS/vncviewer 127.0.0.1::{port}")
+    }
+}
+
+// Run the container with a headless X (Xvfb) + i3 + x11vnc session, exposing
+// the VNC server on the host's loopback via podman port publishing.
+//
+// Container binds its rfbport to 5900; podman maps 127.0.0.1:<port> -> 5900 so
+// only the host's loopback can reach it (no -nopw risk on the network).
+fun launch_vnc(image: Text, geometry: Text, port: Int): Null? {
+    echo("launch: starting VNC session ({geometry}) on port {port}...")
+    echo("note: software rendering only (no GPU in the podman VM)")
+
+    // Detached so we can poll the port and open the viewer before attaching.
+    // The inner sh -c sequences Xvfb -> i3 -> x11vnc (foreground) and traps
+    // termination to reap the background processes. No single quotes / $ used
+    // inside the -c body to keep quoting stable across the amber -> bash hop.
+    const cid = trust $ podman run -d --rm \
+        -p 127.0.0.1:{port}:5900 \
+        -e DISPLAY={VNC_DISPLAY} \
+        -e LIBGL_ALWAYS_SOFTWARE=1 \
+        -e HOME=/home/user \
+        --user=1000 \
+        {image} \
+        sh -c 'rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; Xvfb {VNC_DISPLAY} -screen 0 {geometry} >/tmp/xvfb.log 2>&1 & sleep 1; DISPLAY={VNC_DISPLAY} xsetroot -solid grey 2>/dev/null || true; DISPLAY={VNC_DISPLAY} i3 >/tmp/i3.log 2>&1 & sleep 1; trap "pkill Xvfb 2>/dev/null; pkill i3 2>/dev/null; pkill x11vnc 2>/dev/null" EXIT INT TERM; DISPLAY={VNC_DISPLAY} exec x11vnc -display {VNC_DISPLAY} -forever -nopw -rfbport 5900 -fixscreen 5' | tr -d '\n' $
+
+    echo("launch: container {cid} starting; waiting for VNC server...")
+    if not wait_for_port(port, 30) {
+        echo_error("launch: VNC server did not come up on port {port} within 30s")
+        trust $ podman rm -f {cid} >/dev/null 2>&1 $
+        fail 1
+    }
+
+    open_vnc_viewer(port)
+    // Wait for the viewer process to actually spawn before monitoring, so we
+    // don't tear down during its startup race.
+    wait_for_viewer(port, 10)
+    echo("launch: viewer open. Close the VNC window (or Ctrl-C) to stop.")
+    // Remove the (detached) container whether the user closes the viewer, hits
+    // Ctrl-C, or the launcher is killed externally.
+    trust $ trap 'podman rm -f {cid} >/dev/null 2>&1' EXIT INT TERM $
+    // Block until the viewer process goes away, then tear down. Also handles a
+    // direct Ctrl-C (the trap above removes the container).
+    loop {
+        if not viewer_alive(port) {
+            break
+        }
+        trust $ sleep 1 $
+    }
+    echo("launch: viewer closed; removing container {cid}.")
+    trust $ podman rm -f {cid} >/dev/null 2>&1 $
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher
+// ---------------------------------------------------------------------------
+
+// True when s starts with "--".
+fun is_flag(s: Text): Bool {
+    let yes = false
+    $ [[ "{s}" == --* ]] $ succeeded {
+        yes = true
+    }
+    return yes
+}
+
+// First argument that is not a flag (does not start with '--').
+fun first_positional(args: [Text]): Text {
+    for a in args {
+        if not is_flag(a) {
+            return a
+        }
+    }
+    return ""
+}
+
 pub fun main_launch_window(args): Null? {
     //$ set -x $ ?
     if len(args) < 1 {
-        echo("Usage: launch_container.ab <image[:tag]> [--home <dir>]")
-        echo("Example: amber launch_contaianer.ab jberlanga-devtools:latest")
+        echo("Usage: launch_window.ab <image[:tag]> [--geometry WxHxD] [--port N]")
+        echo("Linux : Xephyr nested window (software rendering).")
+        echo("macOS : VNC, connect via vnc://127.0.0.1:<port> (default 5900).")
         fail 1
     }
-    const image = args[0]
-    require_or_die("Xephyr")
-    require_or_die("xdpyinfo")
-    launch(image)?
+    const image = first_positional(args)
+    if image == "" {
+        echo_error("launch-window: no image specified")
+    }
+
+    if is_macos() {
+        let geometry = flag_value(args, "--geometry")
+        if geometry == "" {
+            geometry = DEFAULT_VNC_GEOMETRY
+        }
+        let port_s = flag_value(args, "--port")
+        if port_s == "" {
+            port_s = "{DEFAULT_VNC_PORT}"
+        }
+        const port = parse_int(port_s)?
+        launch_vnc(image, geometry, port)?
+    } else {
+        launch_xephyr(image)?
+    }
 }
 
-main(args) { 
-    main_launch_window(args[1..len(args)])? 
+main(args) {
+    main_launch_window(args[1..len(args)])?
 }

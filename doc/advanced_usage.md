@@ -83,8 +83,107 @@ During generation each repository is content-hashed (SHA256 of directory + `impl
 
 ## Container Launch
 
-- `container launch-window` — starts Xephyr on display `:2`, caps resolution at 1680×1050, runs i3 inside container via podman.
-- `launch_native_i3_vt.sh` — companion script for GPU-accelerated second Xorg on a separate VT.
+`container launch-window <image[:tag]>` launches i3 inside the container and
+shows it on the host. The transport is chosen by host OS:
+
+- **Linux** — starts Xephyr on display `:2` (caps resolution at 1680×1050), runs
+  i3 inside the container via a shared `/tmp/.X11-unix` socket (software
+  rendering).
+- **macOS** — runs Xvfb + i3 + x11vnc inside the container and serves VNC on the
+  host loopback. The launcher auto-opens **TigerVNC** (`vncviewer`). Software
+  rendering only — the podman machine VM (applehv) exposes no GPU to Linux
+  guests. Flags: `--geometry WxHxD` (default `1680x1050x24`),
+  `--port N` (default `5900`, published on `127.0.0.1:<port>`).
+
+The launched image must contain `x11vnc`, `xvfb`, and `x11-xserver-utils`
+(provided by the UI apt install hook, `install_apt_essential_ui.ab.j2`).
+
+### macOS: one-time VNC client install
+
+macOS 26 (Tahoe) Screen Sharing **no longer speaks plain VNC**, so `open
+vnc://…` does not work. Install a real VNC client:
+
+```
+brew install --cask tigervnc-viewer
+```
+
+This provides `/Applications/TigerVNC.app/Contents/MacOS/vncviewer`. The
+`launch-window` command auto-opens it; if it is missing it prints the install
+command and the manual connect line instead.
+
+### macOS: usage
+
+```
+copals container launch-window jberlanga-devtools:latest
+# or with flags:
+copals container launch-window jberlanga-devtools:latest --geometry 1280x800x24 --port 5901
+```
+
+The launcher starts the container, waits for the VNC server, opens TigerVNC to
+`127.0.0.1::<port>` (note the **double colon** = raw port), and blocks. **Close
+the TigerVNC window** (or Ctrl-C the launcher) to stop and auto-remove the
+container.
+
+### macOS: exact commands that work
+
+One-time, host side — install the VNC client:
+```
+brew install --cask tigervnc-viewer
+```
+
+Build the image (so it contains `x11vnc`/`xvfb`/`x11-xserver-utils` from the UI
+apt hook), then launch:
+```
+copals generate user config_gpersonal jberlanga-devtools
+copals container build jberlanga-devtools
+copals container launch-window jberlanga-devtools:latest
+```
+Flags: `--geometry 1280x800x24 --port 5901`. Connect with TigerVNC to
+`127.0.0.1::<port>` (double colon = raw port). Close the viewer to tear down.
+
+Manual fallback (equivalent to what the launcher does):
+```
+podman run -d --rm --name vncmanual \
+  -p 127.0.0.1:5940:5900 \
+  -e DISPLAY=:0 -e LIBGL_ALWAYS_SOFTWARE=1 -e HOME=/home/user --user=1000 \
+  --entrypoint /bin/bash \
+  jberlanga-devtools:latest -c \
+  'rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; Xvfb :0 -screen 0 1280x800x24 >/tmp/xvfb.log 2>&1 & sleep 1; DISPLAY=:0 xsetroot -solid grey 2>/dev/null || true; DISPLAY=:0 i3 >/tmp/i3.log 2>&1 & sleep 1; trap "pkill Xvfb 2>/dev/null; pkill i3 2>/dev/null; pkill x11vnc 2>/dev/null" EXIT INT TERM; DISPLAY=:0 exec x11vnc -display :0 -forever -nopw -rfbport 5900 -fixscreen 5'
+/Applications/TigerVNC.app/Contents/MacOS/vncviewer 127.0.0.1::5940
+# teardown:
+podman rm -f vncmanual
+```
+
+Gotchas that break it (learned the hard way):
+1. macOS 26 Screen Sharing does **not** speak plain VNC — `open vnc://…` fails.
+   Use TigerVNC. TigerVNC 1.16 has **no F8** menu key (and F8 is the macOS
+   Play/Pause media key); use the Ctrl+Alt shortcuts above.
+2. x11vnc needs `-fixscreen 5` (or similar) or the first frame stays black.
+3. **Do not** run `podman rm`/`pkill` on the container or viewer while the viewer
+   is open — that drops the session and causes "attempt to reconnect" popups.
+4. Connect with the **double-colon** form `vncviewer 127.0.0.1::5940`
+   (`::port` = raw port; single `:N` means VNC display N → port 5900+N).
+
+### macOS: keyboard / input (TigerVNC 1.16 — NOT F8)
+
+TigerVNC 1.16 removed the old F8 menu key. On a Mac, F8 is also the media
+Play/Pause key, so never use it. The 1.16 controls are **Ctrl+Alt** based:
+
+- **Ctrl+Alt+G** — grab the keyboard so i3 Super/Alt shortcuts reach the remote.
+- **Ctrl+Alt+Enter** — toggle full-screen.
+- **Ctrl+Alt+M** — open the viewer menu (options, quit).
+- **Ctrl+Alt** (alone) — release the keyboard back to macOS.
+- **Ctrl+Alt+Space** — temporarily send that combo to i3.
+
+i3 `$mod` mapping on macOS (TigerVNC swaps modifiers): CmdL→AltL, CmdR→SuperL
+("win"). So if the i3 config uses Mod4 (Super), press **Right-Cmd** for `$mod`.
+
+To stop the Mac top row from sending media keys (optional): System Settings →
+Keyboard → enable "Use F1, F2, etc. keys as standard function keys". With
+TigerVNC 1.16 you don't need F-keys at all.
+
+- `launch_native_i3_vt.sh` — companion script for GPU-accelerated second Xorg on
+  a separate VT (Linux only; macOS podman VM has no GPU).
 
 ## Optimized Base Image
 

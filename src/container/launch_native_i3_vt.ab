@@ -14,6 +14,11 @@
 //   launch_native_i3_vt.ab <image[:tag]> [--vt <n>] [--xkb <layout>]
 // Example:
 //   amber launch_native_i3_vt.ab jberlanga-devtools:latest --vt 8
+//
+// TODO: copals should install these display deps directly via a few reusable
+// preset hooks (e.g. a copals-provided "gui-i3vt" preset) rather than relying
+// on the user's UI apt hook to provide the Xorg/i3 stack. Linux-only: the
+// podman machine VM on macOS exposes no GPU, so this VT path never applies.
 
 import { echo_error, echo_warning, env_var_get } from "std/env"
 import { file_exists, file_write } from "std/fs"

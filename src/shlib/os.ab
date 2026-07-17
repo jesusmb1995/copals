@@ -1,0 +1,17 @@
+// os.ab - Lightweight host OS detection.
+//
+// Based on `uname -s` so it works in any POSIX shell / amber $ block without
+// extra dependencies.
+
+// Return the host kernel name from `uname -s` (e.g. "Darwin", "Linux").
+pub fun current_os(): Text {
+    return trust $ uname -s | tr '[:upper:]' '[:lower:]' | tr -d '\n' $
+}
+
+pub fun is_macos(): Bool {
+    return current_os() == "darwin"
+}
+
+pub fun is_linux(): Bool {
+    return current_os() == "linux"
+}
