@@ -78,8 +78,20 @@ EOF
     # scripts/setup-podman-machine.sh once to enable Rosetta (stable x86_64),
     # otherwise amd64 containers fall back to qemu-user which crashes Go tools.
     COPALS_BUILD_ARCH="${COPALS_BUILD_ARCH:-amd64}"
-    podman build --arch "$COPALS_BUILD_ARCH" -t "$COPALS_IMAGE" "$@" "$self_dir"
-    echo "built image $COPALS_IMAGE ($COPALS_BUILD_ARCH)"
+
+    # Podman installation inside the image is optional. Pass
+    # INSTALL_PODMAN=false to skip the 43 MiB static podman-remote binary when
+    # only generation commands are needed (no nested podman builds).
+    PODMAN_STAGE="copals-with-podman"
+    if [ "${INSTALL_PODMAN:-true}" = "false" ]; then
+        PODMAN_STAGE="copals-without-podman"
+    fi
+
+    podman build --arch "$COPALS_BUILD_ARCH" \
+        --build-arg "PODMAN_STAGE=$PODMAN_STAGE" \
+        --build-arg "INSTALL_PODMAN=${INSTALL_PODMAN:-true}" \
+        -t "$COPALS_IMAGE" "$@" "$self_dir"
+    echo "built image $COPALS_IMAGE ($COPALS_BUILD_ARCH, podman=$INSTALL_PODMAN)"
 }
 
 mode="${1:-help}"

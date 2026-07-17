@@ -1,4 +1,5 @@
 ARG ALPINE_VERSION=3.22.5
+ARG PODMAN_STAGE=copals-with-podman
 
 FROM curlimages/curl:8.21.0 AS downloader
 USER root
@@ -21,11 +22,17 @@ COPY . /copals/
 COPY --from=downloader /tmp/vendor /copals/vendor
 RUN ["/bin/sh", "/copals/install.sh", "local"]
 
-FROM alpine:${ALPINE_VERSION}
+FROM alpine:${ALPINE_VERSION} AS copals-base
 RUN --mount=type=cache,target=/var/cache/apk/ \
     apk add --no-cache rsync bash
-COPY --from=downloader /tmp/podman /usr/bin/podman
 COPY --from=builder /usr/bin/copals /usr/bin/copals
 COPY --from=builder /usr/lib/copals /usr/lib/copals
+
+FROM copals-base AS copals-with-podman
+COPY --from=downloader /tmp/podman /usr/bin/podman
+
+FROM copals-base AS copals-without-podman
+
+FROM ${PODMAN_STAGE}
 ENTRYPOINT ["copals"]
 CMD ["help"]
