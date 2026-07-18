@@ -98,6 +98,49 @@ shows it on the host. The transport is chosen by host OS:
 The launched image must contain `x11vnc`, `xvfb`, and `x11-xserver-utils`
 (provided by the UI apt install hook, `install_apt_essential_ui.ab.j2`).
 
+### macOS: prerequisites (read this first)
+
+`launch-window` (and every `copals container ...` command) runs the copals tool
+**inside** the `copals:dev` image, because the vendored `amber` compiler in
+`copals/vendor/` is a **Linux x86-64 binary** and cannot run on macOS directly.
+
+Dispatch logic (`copals.sh`): if podman is reachable **and** the `copals:dev`
+image exists, copals runs in container mode. Otherwise it silently falls back to
+**local mode**, which on macOS fails with:
+
+```
+copals/vendor/amber: cannot execute binary file
+copals: amber build failed for src/copals.ab
+```
+
+This failure almost always means **the podman machine is not running** (e.g.
+right after boot, or after `podman machine stop`) — not that any image is
+missing. Verify and fix the environment before launching:
+
+1. **Podman machine running** (most common cause of the amber error):
+   ```
+   podman machine list        # LAST UP should say "Currently running"
+   podman machine start       # if it is not
+   podman info                # must connect without "connection refused"
+   ```
+2. **`copals:dev` image built** (the tool image; copals commands run inside it):
+   ```
+   podman image exists copals:dev || (cd copals && bash install.sh podman)
+   ```
+3. **One-time nested-podman setup** (Apple Silicon: Rosetta + socket forwarder):
+   ```
+   sh ./copals/scripts/setup-podman-machine.sh
+   ```
+4. **Target image built** (the image you want a window from):
+   ```
+   copals generate user config_gpersonal jberlanga-devtools
+   copals container build jberlanga-devtools
+   ```
+5. **VNC client installed** (see next section):
+   ```
+   brew install --cask tigervnc-viewer
+   ```
+
 ### macOS: one-time VNC client install
 
 macOS 26 (Tahoe) Screen Sharing **no longer speaks plain VNC**, so `open

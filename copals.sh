@@ -163,6 +163,56 @@ run_local() {
     run_amber "src/copals.ab" "$@"
 }
 
+# Run `container launch-window` on the HOST while compiling inside the container.
+#
+# launch-window is special: at runtime it must run on the host (it detects the
+# host OS via `uname` to pick the display transport — Linux->Xephyr,
+# macOS->VNC/TigerVNC — and opens the host's VNC viewer). But the amber compiler
+# is only available (and only runnable) inside the copals container: the
+# vendored `amber` binary is Linux x86-64 and cannot execute on macOS.
+#
+# So: compile launch_window.ab -> .sh INSIDE copals:dev (amber runs on Linux
+# there), writing into the bind-mounted repo, then execute that self-contained
+# compiled bash script directly on the host. amber build inlines all imported
+# modules, so the single .sh needs no amber/vendor tools at runtime — only
+# podman + nc + pgrep + a VNC viewer, all present on the host.
+run_launch_window_host() {
+    src_rel="src/container/launch_window.ab"
+    out_rel="src/container/launch_window.sh"
+
+    # Locate the host repo's copals source tree (never /usr/lib/copals, which
+    # only exists inside the image). self_dir is <repo>/copals.
+    host_src="$self_dir/$src_rel"
+    host_out="$self_dir/$out_rel"
+    if [ ! -f "$host_src" ]; then
+        printf 'copals: launch-window source not found at %s\n' "$host_src" >&2
+        exit 1
+    fi
+
+    # Compile inside the container. The repo is bind-mounted at the same path,
+    # so the compiled .sh lands in the host tree at $host_out. The container's
+    # own installed tree (/usr/lib/copals) has a working Linux amber on PATH via
+    # its vendor dir.
+    printf 'copals: compiling launch-window inside %s ...\n' "$COPALS_IMAGE" >&2
+    podman run --rm \
+        -v "$PWD":"$PWD" -w "$PWD" \
+        --entrypoint /bin/sh \
+        "$COPALS_IMAGE" -c \
+        'PATH=/usr/lib/copals/vendor:$PATH amber build "'"$host_src"'" "'"$host_out"'"' \
+        || { printf 'copals: in-container amber build failed for launch-window\n' >&2; exit 1; }
+
+    if [ ! -f "$host_out" ]; then
+        printf 'copals: expected compiled launcher not found at %s\n' "$host_out" >&2
+        exit 1
+    fi
+
+    # Run the compiled launcher on the host. Drop the leading "container" and
+    # "launch-window" tokens; pass the rest (image + flags) as the launcher's
+    # own args (main() -> main_launch_window).
+    shift 2 2>/dev/null || true
+    exec bash "$host_out" "$@"
+}
+
 # Whether the copals container image is available.
 image_exists() {
     command -v podman >/dev/null 2>&1 && podman image exists "$COPALS_IMAGE" 2>/dev/null
@@ -196,6 +246,13 @@ case "${0##*/}" in
             if [ "${1:-}" = "user-clone" ]; then
                 shift
                 run_fetch_repos "$@"
+            fi
+            # launch-window must run on the host (see run_launch_window_host).
+            # Only special-case it when we would otherwise run in the container
+            # (image exists); with no image, local mode already runs on host.
+            if [ "${1:-}" = "container" ] && [ "${2:-}" = "launch-window" ] \
+               && [ "$COPALS_RUN" != "local" ] && image_exists; then
+                run_launch_window_host "$@"
             fi
             case "$COPALS_RUN" in
                 local) run_local "$@" ;;
