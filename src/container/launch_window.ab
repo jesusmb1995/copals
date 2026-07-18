@@ -157,6 +157,8 @@ fun open_vnc_viewer(port: Int): Null {
         echo("        Ctrl+Alt+G  grab keyboard (i3 Super/Alt reach remote)")
         echo("        Ctrl+Alt+Enter  toggle full-screen")
         echo("        Ctrl+Alt+M  viewer menu")
+        echo("        i3 \$mod = Mod4 (Super): press RIGHT-Cmd (CmdR->SuperL).")
+        echo("        Left-Cmd maps to Alt (Mod1) and will NOT trigger i3.")
     }
     // Fallback: vncviewer on PATH (other platforms / custom installs).
     let has_vncviewer = false
