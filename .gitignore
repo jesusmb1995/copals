@@ -3,3 +3,4 @@ src/**.sh
 test/**.sh
 !vendor/bashunit_installer
 vendor/bashunit_installer/lib
+src/container/launch_window.sh

@@ -35,7 +35,10 @@ const MAX_HEIGHT = 1050
 const XEPHYR_DISPLAY = ":2"
 
 // VNC defaults (macOS). Geometry is WxHxDepth as Xvfb expects.
-const DEFAULT_VNC_GEOMETRY = "1680x1050x24"
+// 1280x800x24 is the verified-working size (matches the manual recipe in
+// doc/advanced_usage.md); larger sizes made TigerVNC scale-to-fit and the
+// desktop rendered as a black frame.
+const DEFAULT_VNC_GEOMETRY = "1280x800x24"
 const DEFAULT_VNC_PORT = 5900
 const VNC_DISPLAY = ":0"
 
@@ -179,18 +182,32 @@ fun launch_vnc(image: Text, geometry: Text, port: Int): Null? {
     echo("launch: starting VNC session ({geometry}) on port {port}...")
     echo("note: software rendering only (no GPU in the podman VM)")
 
+    // Use a deterministic container name per port so we can reliably clean up a
+    // stale session left behind by a previous run that was hard-killed (the
+    // EXIT trap does not fire then, leaking the detached container and keeping
+    // the host port bound — new viewers would connect to that zombie and get
+    // "connection dropped by the server"). Remove any prior instance first.
+    const name = "copals-launch-window-{port}"
+    trust $ podman rm -f {name} >/dev/null 2>&1 $
+
     // Detached so we can poll the port and open the viewer before attaching.
-    // The inner sh -c sequences Xvfb -> i3 -> x11vnc (foreground) and traps
+    // The inner bash -c sequences Xvfb -> i3 -> x11vnc (foreground) and traps
     // termination to reap the background processes. No single quotes / $ used
     // inside the -c body to keep quoting stable across the amber -> bash hop.
+    // --entrypoint /bin/bash + -c mirrors the verified-working manual recipe;
+    // running the session under the image's default sh (dash) instead of bash
+    // was implicated in TigerVNC "connection dropped before session established"
+    // retry loops.
     const cid = trust $ podman run -d --rm \
+        --name {name} \
         -p 127.0.0.1:{port}:5900 \
         -e DISPLAY={VNC_DISPLAY} \
         -e LIBGL_ALWAYS_SOFTWARE=1 \
         -e HOME=/home/user \
         --user=1000 \
+        --entrypoint /bin/bash \
         {image} \
-        sh -c 'rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; Xvfb {VNC_DISPLAY} -screen 0 {geometry} >/tmp/xvfb.log 2>&1 & sleep 1; DISPLAY={VNC_DISPLAY} xsetroot -solid grey 2>/dev/null || true; DISPLAY={VNC_DISPLAY} i3 >/tmp/i3.log 2>&1 & sleep 1; trap "pkill Xvfb 2>/dev/null; pkill i3 2>/dev/null; pkill x11vnc 2>/dev/null" EXIT INT TERM; DISPLAY={VNC_DISPLAY} exec x11vnc -display {VNC_DISPLAY} -forever -nopw -rfbport 5900 -fixscreen 5' | tr -d '\n' $
+        -c 'rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; Xvfb {VNC_DISPLAY} -screen 0 {geometry} >/tmp/xvfb.log 2>&1 & sleep 1; DISPLAY={VNC_DISPLAY} xsetroot -solid grey 2>/dev/null || true; DISPLAY={VNC_DISPLAY} i3 >/tmp/i3.log 2>&1 & sleep 1; trap "pkill Xvfb 2>/dev/null; pkill i3 2>/dev/null; pkill x11vnc 2>/dev/null" EXIT INT TERM; DISPLAY={VNC_DISPLAY} exec x11vnc -display {VNC_DISPLAY} -forever -nopw -rfbport 5900 -fixscreen 5' | tr -d '\n' $
 
     echo("launch: container {cid} starting; waiting for VNC server...")
     if not wait_for_port(port, 30) {
@@ -198,6 +215,14 @@ fun launch_vnc(image: Text, geometry: Text, port: Int): Null? {
         trust $ podman rm -f {cid} >/dev/null 2>&1 $
         fail 1
     }
+
+    // podman's gvproxy accepts the host-side TCP connection as soon as the
+    // container starts — BEFORE x11vnc has bound its RFB socket inside. Opening
+    // the viewer at that instant makes it connect to a half-ready forwarder
+    // that immediately drops it ("connection dropped before the session could
+    // be established" retry loop). Settle a moment so x11vnc is fully listening
+    // (matches the natural delay of the manual recipe).
+    trust $ sleep 2 $
 
     open_vnc_viewer(port)
     // Wait for the viewer process to actually spawn before monitoring, so we
