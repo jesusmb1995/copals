@@ -9,11 +9,60 @@ import { install_{{ repo.id }} } from "{{ repo.id }}.ab"
 {% endif %}
 {% endfor %}
 
-main(_) {
+const AVAILABLE_STEPS = [
 {% for repo in repositories %}
 {% if repo.enabled %}
-    install_{{ repo.id }}()
+    "{{ repo.id }}",
+{% endif %}
+{% endfor %}
+]
+
+fun print_help() {
+    echo("Usage: ./install.sh [step ...]")
+    echo("")
+    echo("Install all steps by default. Pass one or more step names to run")
+    echo("only those steps. Use 'help' to print this message.")
+    echo("")
+    echo("Available steps:")
+{% for repo in repositories %}
+{% if repo.enabled %}
+    echo("  {{ repo.id }}")
 {% endif %}
 {% endfor %}
 }
-// TODO shards at runtime here, help or unknown prints all available
+
+fun run_step(step: Text) {
+    let matched = false
+    if step == "help" {
+        print_help()
+        matched = true
+    }
+{% for repo in repositories %}
+{% if repo.enabled %}
+    if step == "{{ repo.id }}" {
+        install_{{ repo.id }}()
+        matched = true
+    }
+{% endif %}
+{% endfor %}
+    if not matched {
+        echo("Unknown step: '{step}'")
+        echo("Run './install.sh help' for the list of available steps.")
+        exit(1)
+    }
+}
+
+main(raw_args) {
+    const args = raw_args[1..len(raw_args)]
+    if len(args) == 0 {
+{% for repo in repositories %}
+{% if repo.enabled %}
+        install_{{ repo.id }}()
+{% endif %}
+{% endfor %}
+    } else {
+        for step in args {
+            run_step(step)
+        }
+    }
+}
