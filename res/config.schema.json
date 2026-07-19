@@ -84,6 +84,13 @@
         },
         "additionalProperties": false
       }
+    },
+    "disabled": {
+      "type": "object",
+      "description": "Repos excluded by a false condition in the preset. Keyed by repo id; values mirror the repository object shape. Not staged or built.",
+      "additionalProperties": {
+        "type": "object"
+      }
     }
   },
   "additionalProperties": false

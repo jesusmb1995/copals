@@ -27,6 +27,8 @@ fun print_help(): Null {
     echo("    config_name  Config preset name (e.g. 'config_personal')")
     echo("    Flags:  -f, --force    Force re-run all repo install hooks")
     echo("            -d, --debug    Enable shell debug output (set -x)")
+    echo("            --tla <n=v>    Jsonnet top-level arg (code); repeatable")
+    echo("            --tla-str <n=v>  Jsonnet top-level arg (string); repeatable")
     echo("")
     echo("  container   build <bundle_dir>     Build bundle into a container image")
     echo("    Flags:  --reuse        Update the existing image in-place (docker commit)")

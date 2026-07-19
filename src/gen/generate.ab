@@ -21,15 +21,31 @@ import { time_ms } from "../shlib/time.ab"
 
 const MAX_JOBS = 8
 
-fun _render_jsonnet_into_filepath(jsonnet_path: Text, name: Text): Text? {
+// collect_flag_pairs: scan args for each occurrence of `flag` followed by a
+// value token; return the list of values (supports multiple repeats).
+fun collect_flag_pairs(args: [Text], flag: Text): [Text] {
+    let values = []
+    let i = 0
+    while i < len(args) {
+        if args[i] == flag and i + 1 < len(args) {
+            values += [args[i + 1]]
+            i += 2
+        } else {
+            i += 1
+        }
+    }
+    return values
+}
+
+fun _render_jsonnet_into_filepath(jsonnet_path: Text, name: Text, tla_args: [Text]): Text? {
     const tmp_filepath = temp_file_create("-{name}.json")?
-    $ {JSONNET} {jsonnet_path} > {tmp_filepath} $ ?
+    $ {JSONNET} {tla_args} {jsonnet_path} > {tmp_filepath} $ ?
     return tmp_filepath
 }
 
-fun render_jsonnet_into_filepath(jsonnet_path: Text): Text? {
+fun render_jsonnet_into_filepath(jsonnet_path: Text, tla_args: [Text]): Text? {
     const config_file = _render_jsonnet_into_filepath(
-        jsonnet_path, "jbtd-config-rendered")?
+        jsonnet_path, "jbtd-config-rendered", tla_args)?
     $ {JSONSCHEMA} validate {SCHEMA_FILE} {config_file} $ ?
     return config_file
 }
@@ -148,7 +164,7 @@ fun build_installer(
     compile_amber_job(hooks_dst_tmp, "{hooks_dst_tmp}/{ab_file}", out_dir, false)?
 }
 
-fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_run: Bool, user_dir: Text): Null? {
+fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_run: Bool, user_dir: Text, tla_args: [Text]): Null? {
     if force_run {
         if file_exists("{installer_dir}/meta.json") {
             rm_force(installer_dir)?
@@ -156,7 +172,7 @@ fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_ru
     }
     dir_create(dest_dir)?
     dir_create(installer_dir)?
-    const config_file = render_jsonnet_into_filepath(config_jsonnet)?
+    const config_file = render_jsonnet_into_filepath(config_jsonnet, tla_args)?
     render_metadata(config_file, "{installer_dir}/meta.json")?
     const ids = process_repos(dest_dir, config_file, force_run, user_dir)?
     const hooks_src = "{user_dir}/repo-hooks"
@@ -182,13 +198,23 @@ pub fun main_generate(args): Null? {
     const config_name = args[1]
     const config_jsonnet = resolve_config_path(user_dir_input, config_name)?
 
+    // Collect --tla <name=value> (jsonnet --tla-code) and --tla-str <name=value>
+    // (jsonnet --tla-str) passthroughs for the config preset render.
+    let tla_args = []
+    for pair in collect_flag_pairs(args, "--tla") {
+        tla_args += ["--tla-code", pair]
+    }
+    for pair in collect_flag_pairs(args, "--tla-str") {
+        tla_args += ["--tla-str", pair]
+    }
+
     const start_time = time_ms()?
 
     if len(args) > 2 {
         const dest_root = args[2]
-        generate(config_jsonnet, "{dest_root}/src", dest_root, force_run, user_dir_input)?
+        generate(config_jsonnet, "{dest_root}/src", dest_root, force_run, user_dir_input, tla_args)?
     } else {
-        generate(config_jsonnet, DEST_DIR, INSTALLER_DIR, force_run, user_dir_input)?
+        generate(config_jsonnet, DEST_DIR, INSTALLER_DIR, force_run, user_dir_input, tla_args)?
     }
     const elapsed = time_ms()? - start_time
     echo_success("Generation finished in {elapsed} ms")
