@@ -258,27 +258,29 @@ run_container_noreplace() {
         "$COPALS_IMAGE" "$@"
 }
 
-# --- generate --audit / --push post-processing -------------------------------
+# --- generate/pipeline --audit / --push post-processing --------------------
 #
-# `copals generate ... [--audit] [--push]` runs the normal generation step and
-# then hands off to postprocess.ab, compiled in-container and run on the HOST
-# (like launch-window/publish). postprocess.ab owns the audit (copals:security
-# container) and publish (git wrap + push) logic — amber, not raw shell,
-# handles the flags and ordering.
+# `copals <generate|pipeline> ... [--audit] [--push]` runs the subcommand
+# first (non-exec), then hands off to postprocess.ab, compiled in-container and
+# run on the HOST (like launch-window/publish). postprocess.ab owns the audit
+# (copals:security container) and publish (git wrap + push) logic — amber, not
+# raw shell, handles the flags and ordering.
 #
 # The SAME original args (still including --audit/--push) are passed verbatim
-# to both `generate` and `postprocess.sh`; each consumes the flags it cares
-# about via amber `has_flag`. No shell-side arg stripping/parsing is needed.
+# to both the subcommand and `postprocess.sh`; each consumes the flags it
+# cares about via amber `has_flag`. No shell-side arg stripping/parsing needed.
 #
-# Args: <generate args, e.g. generate user config dest --audit>
-run_generate_postprocess() {
-    # Run generation first (non-exec), with the flags still present.
+# $1 = subcommand to run first (generate|pipeline); remaining "$@" = its args
+#      (e.g. user config dest --audit), also forwarded to postprocess.
+run_and_postprocess() {
+    subcmd="$1"; shift
+    # Run the subcommand first (non-exec), with the flags still present.
     if [ "$COPALS_RUN" = "local" ] || { [ "$COPALS_RUN" = "auto" ] && ! image_exists; }; then
-        run_local "$@"; gen_rc=$?
+        run_local "$subcmd" "$@"; step_rc=$?
     else
-        run_container_noreplace "$@"; gen_rc=$?
+        run_container_noreplace "$subcmd" "$@"; step_rc=$?
     fi
-    [ "$gen_rc" -ne 0 ] && { printf 'copals: generate failed (rc=%d)\n' "$gen_rc" >&2; exit "$gen_rc"; }
+    [ "$step_rc" -ne 0 ] && { printf 'copals: %s failed (rc=%d)\n' "$subcmd" "$step_rc" >&2; exit "$step_rc"; }
 
     # Compile postprocess.ab -> .sh in-container (writes into the bind-mounted
     # repo), then run the self-contained .sh on the HOST with the SAME args.
@@ -319,9 +321,10 @@ case "${0##*/}" in
             # to it), then hand off to postprocess.ab (compiled in-container,
             # run on host) with the SAME args. Plain `generate` keeps the
             # normal fast path.
-            if [ "${1:-}" = "generate" ] \
+            if ( [ "${1:-}" = "generate" ] || [ "${1:-}" = "pipeline" ] ) \
                && ( echo "$*" | grep -q -- '--audit' || echo "$*" | grep -q -- '--push' ); then
-                run_generate_postprocess "$@"
+                subcmd="$1"; shift
+                run_and_postprocess "$subcmd" "$@"
             fi
             # user-clone runs on the host directly (needs git credentials).
             if [ "${1:-}" = "user-clone" ]; then

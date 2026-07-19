@@ -170,7 +170,7 @@ pub fun main_postprocess(args: [Text]): Null? {
     let abs = $ cd "{bundle_dir}" >/dev/null 2>&1 && pwd $?
     if abs == "" { abs = "{PWD_HOST}/{bundle_dir}" }
     bundle_dir = abs
-    let audit_dir = "{abs}/src"
+    const audit_dir = "{abs}/src"
 
     if audit_wanted {
         run_audit(audit_dir)?
