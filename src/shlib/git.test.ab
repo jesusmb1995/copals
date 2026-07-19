@@ -13,7 +13,7 @@ test "is_patch_already_applied: returns false before patch is applied" {
         git_init(repo)?
         $ echo hello > {repo}/file.txt $ ?
         git_add(repo, "file.txt")?
-        git_commit(repo, "Test", "test@test.com", "initial")?
+        git_commit(repo, "initial")?
         
         const patch_file = temp_file_create("-patch.diff")?
         $ echo world > {repo}/file.txt $ ?
@@ -33,7 +33,7 @@ test "is_patch_already_applied: returns true after patch is applied" {
         git_init(repo)?
         $ echo hello > {repo}/file.txt $ ?
         git_add(repo, "file.txt")?
-        git_commit(repo, "Test", "test@test.com", "initial")?
+        git_commit(repo, "initial")?
         
         const patch_file = temp_file_create("-patch.diff")?
         $ echo world > {repo}/file.txt $ ?

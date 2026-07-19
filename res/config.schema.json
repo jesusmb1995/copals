@@ -91,6 +91,22 @@
       "additionalProperties": {
         "type": "object"
       }
+    },
+    "publish": {
+      "type": "object",
+      "description": "Optional: wrap the whole generated bundle in a git repo so each generation is a commit (changelist of generations). Push happens only when the generate command is invoked with --push; by default the commit stays local. Git identity/ssh auth are taken from the system (host) config.",
+      "properties": {
+        "remote": {
+          "type": "string",
+          "description": "Git remote URL to associate with the bundle repo (e.g. an https or ssh clone URL)."
+        },
+        "branch": {
+          "type": "string",
+          "description": "Branch to commit/push on. Defaults to 'main' when omitted.",
+          "default": "main"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

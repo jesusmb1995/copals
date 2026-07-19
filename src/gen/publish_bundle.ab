@@ -1,0 +1,86 @@
+#!/usr/bin/env amber
+// publish_bundle.ab - Wrap the whole generated bundle in a git repo.
+//
+// Each generate run becomes one commit, so the bundle's git log is the
+// changelist of generations. On the first run (no remote branch yet) an
+// initial commit is the baseline; later runs fetch the prior generation as
+// baseline so the new commit is a real diff.
+//
+// This script is compiled to .sh and run ON THE HOST by copals/copals.sh
+// (same pattern as launch-window), so git identity + ssh agent / deploy keys
+// are taken from the host. All git operations come from shlib/git.ab.
+//
+// Usage:
+//   publish_bundle.ab <bundle_dir> <remote> <branch> <push:0|1>
+
+import { echo_warning, echo_error } from "std/env"
+import { dir_exists } from "std/fs"
+import {
+    git_init, git_add, git_commit, git_remote_add, git_remote_exists,
+    git_try_fetch, git_reset_soft, git_push, git_try_checkout,
+    git_try_checkout_new, git_has_changes,
+} from "../shlib/git.ab"
+
+fun ensure_repo(bundle_dir: Text, remote: Text, branch: Text): Null? {
+    if not dir_exists("{bundle_dir}/.git") {
+        git_init(bundle_dir)?
+        git_try_checkout_new(bundle_dir, branch)
+    } else {
+        if not git_try_checkout(bundle_dir, branch) {
+            git_try_checkout_new(bundle_dir, branch)
+        }
+    }
+
+    if remote != "" {
+        if not git_remote_exists(bundle_dir, "origin") {
+            git_remote_add(bundle_dir, "origin", remote)?
+        }
+        // Fetch the prior generation so the new commit can sit on top of it as
+        // a real diff. reset --SOFT (not --hard): repoints the branch to the
+        // fetched baseline but leaves the freshly generated working tree intact.
+        // On the very first push the remote branch does not exist yet, so the
+        // fetch fails and the commit below becomes the root/baseline.
+        if git_try_fetch(bundle_dir, "origin", branch) {
+            git_reset_soft(bundle_dir, "origin/{branch}")?
+        }
+    }
+}
+
+main(args) {
+    const rest = args[1..len(args)]
+    if len(rest) < 4 {
+        echo_error("publish_bundle: usage: <bundle_dir> <remote> <branch> <push:0|1>")
+    }
+    const bundle_dir = rest[0]
+    const remote = rest[1]
+    let branch = rest[2]
+    if branch == "" {
+        branch = "main"
+    }
+    const do_push = rest[3] == "1"
+
+    if not dir_exists(bundle_dir) {
+        echo_error("publish: bundle dir does not exist: {bundle_dir}")
+    }
+
+    ensure_repo(bundle_dir, remote, branch)?
+
+    git_add(bundle_dir, "-A")?
+    if git_has_changes(bundle_dir) {
+        const ts = trust $ date -u +%Y-%m-%dT%H:%M:%SZ $
+        git_commit(bundle_dir, "copals generate @ {ts}")?
+    } else {
+        echo "publish: no changes in {bundle_dir}, skipping commit"
+    }
+
+    if do_push and remote != "" {
+        git_push(bundle_dir, "origin", branch)?
+        echo "publish: pushed {branch} -> {remote}"
+    } else {
+        if do_push {
+            echo_warning("publish: --push given but no publish.remote configured; nothing pushed")
+        } else {
+            echo "publish: committed locally (no --push)"
+        }
+    }
+}

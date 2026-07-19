@@ -31,9 +31,77 @@ pub fun git_init(repo: Text): Null? {
 }
 
 pub fun git_add(repo: Text, file: Text): Null? {
-    $ git -C {repo} add {file} $ ?
+    $ git -C "{repo}" add "{file}" $ ?
 }
 
-pub fun git_commit(repo: Text, name: Text, email: Text, message: Text): Null? {
-    $ git -C {repo} -c user.name={name} -c user.email={email} commit -m {message} $ ?
+pub fun git_commit(repo: Text, message: Text): Null? {
+    $ git -C "{repo}" commit -m "{message}" $ ?
+}
+
+pub fun git_remote_add(repo: Text, name: Text, url: Text): Null? {
+    $ git -C "{repo}" remote add {name} "{url}" $ ?
+}
+
+pub fun git_remote_get_url(repo: Text, name: Text): Text? {
+    return $ git -C "{repo}" remote get-url {name} $ ?
+}
+
+pub fun git_remote_exists(repo: Text, name: Text): Bool {
+    $ git -C "{repo}" remote get-url {name} >/dev/null 2>&1 $ failed {
+        return false
+    }
+    return true
+}
+
+pub fun git_fetch(repo: Text, remote: Text, branch: Text): Null? {
+    $ git -C "{repo}" fetch {remote} {branch} $ ?
+}
+
+// Like git_fetch but returns Bool instead of propagating failure (useful when
+// the remote branch may not exist yet, e.g. the first publish).
+pub fun git_try_fetch(repo: Text, remote: Text, branch: Text): Bool {
+    $ git -C "{repo}" fetch {remote} {branch} $ failed {
+        return false
+    }
+    return true
+}
+
+pub fun git_reset_hard(repo: Text, target_ref: Text): Null? {
+    $ git -C "{repo}" reset --hard {target_ref} $ ?
+}
+
+// Repoint the current branch to target_ref WITHOUT touching the working tree
+// or index. Used by publish so a freshly generated tree becomes a diff commit
+// on top of the previous generation (hard reset would discard the new files).
+pub fun git_reset_soft(repo: Text, target_ref: Text): Null? {
+    $ git -C "{repo}" reset --soft {target_ref} $ ?
+}
+
+pub fun git_push(repo: Text, remote: Text, branch: Text): Null? {
+    $ git -C "{repo}" push -u {remote} {branch} $ ?
+}
+
+pub fun git_try_checkout_new(repo: Text, branch: Text): Bool {
+    $ git -C "{repo}" checkout -b {branch} $ failed {
+        return false
+    }
+    return true
+}
+
+pub fun git_try_checkout(repo: Text, branch: Text): Bool {
+    $ git -C "{repo}" checkout {branch} $ failed {
+        return false
+    }
+    return true
+}
+
+pub fun git_current_branch(repo: Text): Text? {
+    return $ git -C "{repo}" rev-parse --abbrev-ref HEAD $ ?
+}
+
+pub fun git_has_changes(repo: Text): Bool {
+    const out = $ git -C "{repo}" status --porcelain $ failed {
+        return false
+    }
+    return out != ""
 }
