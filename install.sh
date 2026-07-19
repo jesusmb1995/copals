@@ -11,10 +11,19 @@ self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 print_help() {
 cat <<'EOF'
-Install copals via one of two modes:
+Install copals via one of these modes:
   install.sh local  [prefix]      install to <prefix> (default: /usr)
   install.sh podman [args...]     build the copals container image; <args>
                                   are passed through to `podman build`
+  install.sh security [args...]   build the copals:security image (brew +
+                                  semgrep/trufflehog/clamav) used by
+                                  `copals generate ... --audit`; <args> are
+                                  passed through to `podman build`
+  install.sh extensions           interactively install the host-side audit
+                                  tools (semgrep, trufflehog, clamav via brew)
+                                  and podman (if missing). Non-interactive
+                                  sessions (no TTY) install everything without
+                                  prompting.
   install.sh help                 show this help
 
 When the Dockerfile invokes this script it calls `install.sh local /usr`.
@@ -26,6 +35,29 @@ Local layout produced under <prefix>:
   <prefix>/lib/copals/vendor/    amber, jq, j2, jsonnet, jsonschema, ...
   <prefix>/lib/copals/config.schema.json
 EOF
+}
+
+# prompt_yesno <question>: print "y" or "n" on stdout. When stdin is not a TTY
+# (piped/CI) it returns "y" without asking, so non-interactive installs just
+# proceed. The prompt itself goes to stderr so it never pollutes the answer.
+prompt_yesno() {
+    if [ ! -t 0 ]; then printf 'y'; return; fi
+    printf '%s [Y/n] ' "$1" >&2
+    read -r _ans || true
+    case "$_ans" in
+        n|N|no|NO|No) printf 'n' ;;
+        *) printf 'y' ;;
+    esac
+}
+
+# Ensure brew is installed and on PATH. Used by the extensions mode (host) for
+# the security tools and podman prompts. Mirrors dependencies.sh --extensions.
+ensure_brew() {
+    if command -v brew >/dev/null 2>&1; then return 0; fi
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || return 1
+    for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+        if [ -x "$_brew" ]; then eval "$("$_brew" shellenv)"; return 0; fi
+    done
 }
 
 # Ensure vendored tools are present; fetch them only if missing.
@@ -93,14 +125,66 @@ EOF
     echo "built image $COPALS_IMAGE ($COPALS_BUILD_ARCH, podman=${INSTALL_PODMAN:-true})"
 }
 
+# Build the copals:security image (glibc + brew + semgrep/trufflehog/clamav).
+# Used by `copals generate ... --audit` to scan the generated bundle.
+install_security() {
+    if ! command -v podman >/dev/null 2>&1; then
+        cat >&2 <<'EOF'
+install: 'podman' was not found on your PATH.
+
+Install Homebrew first:
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+then install podman with:
+  brew install podman
+EOF
+        exit 1
+    fi
+
+    COPALS_SECURITY_IMAGE="${COPALS_SECURITY_IMAGE:-copals:security}"
+    # Match copals:dev's arch so both images run under the same podman machine
+    # (Rosetta on Apple Silicon, native on Linux).
+    COPALS_BUILD_ARCH="${COPALS_BUILD_ARCH:-amd64}"
+
+    podman build --arch "$COPALS_BUILD_ARCH" \
+        -f "$self_dir/res/security.Dockerfile" \
+        -t "$COPALS_SECURITY_IMAGE" "$@" "$self_dir"
+    echo "built image $COPALS_SECURITY_IMAGE ($COPALS_BUILD_ARCH, brew + semgrep/trufflehog/clamav)"
+}
+
+# Interactively install the host-side audit toolset + podman.
+# Non-interactive (no TTY) installs everything without prompting.
+install_extensions() {
+    echo "copals extensions: security tools (semgrep, trufflehog, clamav) + podman"
+
+    if [ "$(prompt_yesno 'Install security tools (semgrep, trufflehog, clamav) via brew?')" = "y" ]; then
+        # Reuse the shared extensions installer so the host gets the exact same
+        # toolset as the copals:security image.
+        sh "$self_dir/dependencies.sh" --extensions || echo "warning: security tools install failed" >&2
+    else
+        echo "skipped security tools"
+    fi
+
+    if command -v podman >/dev/null 2>&1; then
+        echo "podman already installed, skipping"
+    elif [ "$(prompt_yesno 'Install podman via brew?')" = "y" ]; then
+        ensure_brew || { echo "error: could not bootstrap brew" >&2; exit 1; }
+        brew install podman
+    else
+        echo "skipped podman"
+    fi
+}
+
 mode="${1:-help}"
 [ $# -gt 0 ] && shift
 case "$mode" in
     local)  install_local "${1:-/usr}" ;;
     podman) install_podman "$@" ;;
+    security) install_security "$@" ;;
+    extensions|--extensions) install_extensions ;;
     help|-h|--help) print_help ;;
     *)
-        echo "install: unknown mode '$mode' (expected: local|podman|help)" >&2
+        echo "install: unknown mode '$mode' (expected: local|podman|security|extensions|help)" >&2
         print_help >&2
         exit 1
         ;;

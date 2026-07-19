@@ -1,0 +1,201 @@
+#!/usr/bin/env amber
+
+// postprocess.ab - host-side post-generation step for `copals generate ...`.
+//
+// Runs on the HOST (compiled in-container to a self-contained .sh by
+// copals.sh, then executed on the host). Owns the two optional, host-only
+// post-processing flags:
+//   --audit : scan the generated bundle with the copals:security container
+//             (semgrep + trufflehog + clamav). Fails with a non-zero exit if
+//             any issue is found.
+//   --push  : wrap the whole generated bundle in a git repo and push it to the
+//             configured publish remote/branch (host git identity + ssh agent).
+//
+// Order enforced here: generate -> audit -> publish. The audit is performed
+// BEFORE publish so insecure output is never published.
+//
+// Usage (invoked by copals.sh with the SAME args as `generate`):
+//   postprocess.sh <user_dir> <config_name> [dest_root] [--audit] [--push]
+//
+// All flag/positional handling lives in amber (not raw shell). Tooling that is
+// only available inside the copals container (jsonnet/jq for config rendering)
+// is reached via `podman run copals:dev ...`; git/podman themselves run on the
+// host.
+
+import { echo_error, echo_warning, echo_success } from "std/env"
+import { file_exists, file_read, dir_exists } from "std/fs"
+import { split_lines, split, replace_one } from "std/text"
+import { temp_file_create } from "../shlib/temp.ab"
+import { DEST_ROOT, DEST_DIR } from "../vars.ab"
+import { has_flag } from "../shlib/flag.ab"
+import {
+    git_init, git_add, git_commit, git_remote_add, git_remote_exists,
+    git_try_fetch, git_reset_soft, git_push, git_try_checkout,
+    git_try_checkout_new, git_has_changes,
+} from "../shlib/git.ab"
+
+// Image names / working dir come from the host environment (set by copals.sh).
+// Amber interpolates {..}, so we read the raw $VAR (no ${VAR:-default} brace
+// form, which amber would misparse) and default in amber instead. Resolved in
+// main_postprocess (the `?` operator is only allowed inside a function body).
+let COPALS_IMAGE = ""
+let SECURITY_IMAGE = ""
+let PWD_HOST = ""
+
+// Resolve <user_dir>/config-presets/<config> (or a literal path containing /)
+// exactly like generate.ab, returning the path that jsonnet/jq can read.
+fun resolve_config_path(user_dir: Text, config_name: Text): Text? {
+    if replace_one(config_name, "/", "") != config_name {
+        return config_name
+    }
+    const jsonnet_path = "{user_dir}/config-presets/{config_name}.jsonnet"
+    if file_exists(jsonnet_path) {
+        return jsonnet_path
+    }
+    const json_path = "{user_dir}/config-presets/{config_name}.json"
+    if file_exists(json_path) {
+        return json_path
+    }
+    echo_error("postprocess: config preset not found: '{config_name}'")
+    fail 1
+}
+
+// Render the config in-container (copals:dev has jsonnet + jq) and extract the
+// .publish.remote / .publish.branch fields into a temp file (two tab-separated
+// values: <remote>\t<branch>). Returns the temp file path; empty values mean
+// "no publish configured".
+fun resolve_publish(user_dir: Text, config_name: Text): Text? {
+    const config_path = resolve_config_path(user_dir, config_name)?
+    const cfg_tmp = temp_file_create("copals-publish.json")?
+    const is_jsonnet = replace_one(config_path, ".jsonnet", "") != config_path
+    if is_jsonnet {
+        $ podman run --rm -v "{PWD_HOST}":"{PWD_HOST}" -w "{PWD_HOST}" --entrypoint /bin/sh {COPALS_IMAGE} -c 'PATH=/usr/lib/copals/vendor:\$PATH; jsonnet "{config_path}" | jq -r "[.publish.remote // \"\", .publish.branch // \"\"] | @tsv"' > "{cfg_tmp}" $ ?
+    } else {
+        $ podman run --rm -v "{PWD_HOST}":"{PWD_HOST}" -w "{PWD_HOST}" --entrypoint /bin/sh {COPALS_IMAGE} -c 'PATH=/usr/lib/copals/vendor:\$PATH; jq -r "[.publish.remote // \"\", .publish.branch // \"\"] | @tsv"' "{config_path}" > "{cfg_tmp}" $ ?
+    }
+    return cfg_tmp
+}
+
+// Wrap <bundle_dir> in a git repo and optionally push to <remote>/<branch>.
+fun publish_bundle(bundle_dir: Text, remote: Text, branch: Text, do_push: Bool): Null? {
+    if dir_exists("{bundle_dir}/.git") {
+        if not git_try_checkout(bundle_dir, branch) {
+            git_try_checkout_new(bundle_dir, branch)
+        }
+    } else {
+        git_init(bundle_dir)?
+        git_try_checkout_new(bundle_dir, branch)
+    }
+
+    if remote != "" {
+        if not git_remote_exists(bundle_dir, "origin") {
+            git_remote_add(bundle_dir, "origin", remote)?
+        }
+        // Fetch the prior generation so the new commit sits on top as a real
+        // diff (reset --SOFT keeps the freshly generated working tree intact).
+        if git_try_fetch(bundle_dir, "origin", branch) {
+            git_reset_soft(bundle_dir, "origin/{branch}")?
+        }
+    }
+
+    git_add(bundle_dir, "-A")?
+    if git_has_changes(bundle_dir) {
+        const ts = $ date -u +%Y-%m-%dT%H:%M:%SZ $ ?
+        git_commit(bundle_dir, "copals generate @ {ts}")?
+    } else {
+        echo("postprocess: no changes in {bundle_dir}, skipping commit")
+    }
+
+    if do_push {
+        if remote != "" {
+            git_push(bundle_dir, "origin", branch)?
+            echo_success("postprocess: pushed {branch} -> {remote}")
+        } else {
+            echo_warning("postprocess: --push given but no publish.remote configured; committed locally only")
+        }
+    } else {
+        echo("postprocess: committed locally (no --push)")
+    }
+}
+
+// Run the security audit over <audit_dir> using the copals:security container.
+// Fails (non-zero) if the image is missing or any tool reports findings.
+fun run_audit(audit_dir: Text): Null? {
+    let image_present = false
+    $ podman image exists {SECURITY_IMAGE} $ succeeded {
+        image_present = true
+    }
+    if not image_present {
+        echo_error("postprocess: security image {SECURITY_IMAGE} not found.")
+        echo_error("build it with: install.sh security")
+        fail 1
+    }
+    echo("postprocess: auditing {audit_dir} in {SECURITY_IMAGE} ...")
+    $ podman run --rm -v "{PWD_HOST}":"{PWD_HOST}" -w "{PWD_HOST}" {SECURITY_IMAGE} "{audit_dir}" $ failed {
+        echo_error("postprocess: audit FAILED — issues detected in {audit_dir}")
+        fail 1
+    }
+    echo_success("postprocess: audit OK — no issues in {audit_dir}")
+}
+
+pub fun main_postprocess(args: [Text]): Null? {
+    // Resolve host environment (image names + working dir) here so the `?`
+    // operator is allowed (module-level `?` is not).
+    COPALS_IMAGE = $ echo \$COPALS_IMAGE $ ?
+    if COPALS_IMAGE == "" { COPALS_IMAGE = "copals:dev" }
+    SECURITY_IMAGE = $ echo \$COPALS_SECURITY_IMAGE $ ?
+    if SECURITY_IMAGE == "" { SECURITY_IMAGE = "copals:security" }
+    PWD_HOST = $ echo \$PWD $ ?
+
+    // Receives the SAME args as `generate` (user_dir config_name [dest_root]
+    // [flags] --audit --push). Parse positionals by index and consume the
+    // optional flags via has_flag — no shell-side arg stripping required.
+    if len(args) < 3 {
+        echo_error("postprocess: usage: <user_dir> <config_name> [dest_root] [--audit] [--push]")
+        fail 1
+    }
+    const user_dir = args[0]
+    const config_name = args[1]
+    const dest_root = args[2]
+    const audit_wanted = has_flag(args, "--audit")
+    const push_wanted = has_flag(args, "--push")
+
+    // bundle_dir holds src/ + meta.json; audit/commit happen inside it.
+    // Resolve to an absolute path (relative to the host PWD) via a host shell
+    // `cd`/`pwd` so the security container's bind-mount and the host git
+    // operations are unambiguous. Falls back to a PWD-relative join if the
+    // path does not exist yet.
+    let bundle_dir = DEST_ROOT
+    if dest_root != "" { bundle_dir = dest_root }
+    let abs = $ cd "{bundle_dir}" >/dev/null 2>&1 && pwd $?
+    if abs == "" { abs = "{PWD_HOST}/{bundle_dir}" }
+    bundle_dir = abs
+    let audit_dir = "{abs}/src"
+
+    if audit_wanted {
+        run_audit(audit_dir)?
+        // Stop here if the audit failed (run_audit already failed above on a
+        // non-zero tool result), so publish never runs on insecure output.
+    }
+
+    if push_wanted {
+        const cfg_tmp = resolve_publish(user_dir, config_name)?
+        const raw = file_read(cfg_tmp)?
+        const rows = split_lines(raw)
+        let remote = ""
+        let branch = ""
+        if len(rows) > 0 {
+            const fields = split("\t", rows[0])
+            if len(fields) > 0 { remote = fields[0] }
+            if len(fields) > 1 { branch = fields[1] }
+        }
+        publish_bundle(bundle_dir, remote, branch, true)?
+    }
+
+    echo_success("postprocess: done")
+}
+
+// Standalone entry: args[0] is the script name; pass the rest through.
+main(args) {
+    main_postprocess(args[1..len(args)])?
+}

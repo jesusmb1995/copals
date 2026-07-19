@@ -33,6 +33,9 @@
 #     CONTAINER_HOST=unix:///run/podman/podman.sock with COPALS_NETWORK="".
 
 COPALS_IMAGE="${COPALS_IMAGE:-copals:dev}"
+export COPALS_IMAGE
+COPALS_SECURITY_IMAGE="${COPALS_SECURITY_IMAGE:-copals:security}"
+export COPALS_SECURITY_IMAGE
 COPALS_RUN="${COPALS_RUN:-auto}"
 # Network mode for the copals container. "host" is required for nested podman on
 # macOS (the VM's loopback forwarder is only reachable that way). Set to "" for
@@ -155,7 +158,9 @@ run_amber() {
         printf 'copals: could not cd to %s\n' "$orig_pwd" >&2
         exit 1
     }
-    exec bash "$output" "$@"
+    # Run without exec so callers (e.g. the generate --audit/--push pipeline)
+    # can continue after generation finishes.
+    bash "$output" "$@"
 }
 
 # Run the main copals entrypoint script.
@@ -231,6 +236,74 @@ run_fetch_repos() {
     exit 1
 }
 
+# Run inside the copals container but RETURN (do not exec) so the caller can
+# run more steps afterward (audit, publish). Mirrors run_container minus exec.
+run_container_noreplace() {
+    network_args=""
+    if [ -n "$COPALS_NETWORK" ]; then
+        network_args="--network=$COPALS_NETWORK"
+    fi
+    container_host="${COPALS_CONTAINER_HOST:-tcp://127.0.0.1:${COPALS_PODMAN_PORT}}"
+    unset CONTAINER_HOST DOCKER_HOST
+    podman run --rm \
+        $network_args \
+        -v "$PWD":"$PWD" -w "$PWD" \
+        -v copals-cache:/root/.cache \
+        -e COPALS_IN_CONTAINER=1 \
+        -e COPALS_PODMAN_PORT="$COPALS_PODMAN_PORT" \
+        -e CONTAINER_HOST="$container_host" \
+        -e DOCKER_HOST="$container_host" \
+        -e STORAGE_DRIVER="${COPALS_STORAGE_DRIVER:-vfs}" \
+        -e CONTAINERS_SECCOMP_PROFILE="${COPALS_SECCOMP_PROFILE:-unconfined}" \
+        "$COPALS_IMAGE" "$@"
+}
+
+# --- generate --audit / --push post-processing -------------------------------
+#
+# `copals generate ... [--audit] [--push]` runs the normal generation step and
+# then hands off to postprocess.ab, compiled in-container and run on the HOST
+# (like launch-window/publish). postprocess.ab owns the audit (copals:security
+# container) and publish (git wrap + push) logic — amber, not raw shell,
+# handles the flags and ordering.
+#
+# The SAME original args (still including --audit/--push) are passed verbatim
+# to both `generate` and `postprocess.sh`; each consumes the flags it cares
+# about via amber `has_flag`. No shell-side arg stripping/parsing is needed.
+#
+# Args: <generate args, e.g. generate user config dest --audit>
+run_generate_postprocess() {
+    # Run generation first (non-exec), with the flags still present.
+    if [ "$COPALS_RUN" = "local" ] || { [ "$COPALS_RUN" = "auto" ] && ! image_exists; }; then
+        run_local "$@"; gen_rc=$?
+    else
+        run_container_noreplace "$@"; gen_rc=$?
+    fi
+    [ "$gen_rc" -ne 0 ] && { printf 'copals: generate failed (rc=%d)\n' "$gen_rc" >&2; exit "$gen_rc"; }
+
+    # Compile postprocess.ab -> .sh in-container (writes into the bind-mounted
+    # repo), then run the self-contained .sh on the HOST with the SAME args.
+    post_src="$self_dir/src/gen/postprocess.ab"
+    post_out="$self_dir/src/gen/postprocess.sh"
+    if [ ! -f "$post_src" ]; then
+        printf 'copals: postprocess source not found at %s\n' "$post_src" >&2
+        exit 1
+    fi
+    printf 'copals: compiling postprocess inside %s ...\n' "$COPALS_IMAGE" >&2
+    podman run --rm \
+        -v "$PWD":"$PWD" -w "$PWD" \
+        --entrypoint /bin/sh \
+        "$COPALS_IMAGE" -c \
+        'PATH=/usr/lib/copals/vendor:$PATH amber build "'"$post_src"'" "'"$post_out"'"' \
+        || { printf 'copals: in-container amber build failed for postprocess\n' >&2; exit 1; }
+    if [ ! -f "$post_out" ]; then
+        printf 'copals: expected compiled postprocess not found at %s\n' "$post_out" >&2
+        exit 1
+    fi
+
+    bash "$post_out" "$@"
+    exit $?
+}
+
 # Dispatch when executed directly (not sourced).
 case "${0##*/}" in
     copals.sh|copals)
@@ -242,6 +315,14 @@ case "${0##*/}" in
             # the host daemon via CONTAINER_HOST instead.
             run_local "$@"
         else
+            # generate --audit / --push: run generate (the flags are harmless
+            # to it), then hand off to postprocess.ab (compiled in-container,
+            # run on host) with the SAME args. Plain `generate` keeps the
+            # normal fast path.
+            if [ "${1:-}" = "generate" ] \
+               && ( echo "$*" | grep -q -- '--audit' || echo "$*" | grep -q -- '--push' ); then
+                run_generate_postprocess "$@"
+            fi
             # user-clone runs on the host directly (needs git credentials).
             if [ "${1:-}" = "user-clone" ]; then
                 shift

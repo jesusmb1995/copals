@@ -1,5 +1,39 @@
 #!/bin/sh
 set -e
+
+# --- extensions -------------------------------------------------------------
+# `dependencies.sh --extensions` installs the security/audit toolset (semgrep,
+# trufflehog, clamav) via brew. Shared between:
+#   - the copals:security image (res/security.Dockerfile), and
+#   - the host (`install.sh extensions`), so a host user can run the same audit
+#     locally without the container.
+# It exits before the vendor-tool fetch below, so neither the xz/unzip/sha256sum
+# requirements nor the bashunit installer apply on this path.
+if [ "${1:-}" = "--extensions" ]; then
+    if ! command -v brew >/dev/null 2>&1; then
+        if ! command -v curl >/dev/null 2>&1; then
+            echo "error: curl is required to bootstrap brew" >&2
+            exit 1
+        fi
+        NONINTERACTIVE=1 /bin/bash -c \
+            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+    # Source brew's shellenv so `brew` is on PATH right after a fresh install
+    # (covers Linuxbrew in the container and both macOS locations on the host).
+    for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+        if [ -x "$_brew" ]; then
+            eval "$("$_brew" shellenv)"
+            break
+        fi
+    done
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "error: brew not available after bootstrap" >&2
+        exit 1
+    fi
+    HOMEBREW_NO_INSTALL_CLEANUP=1 brew install semgrep trufflehog clamav
+    exit 0
+fi
+
 out_dir="${1:-vendor}"
 
 for cmd in curl sha256sum tar xz unzip; do
