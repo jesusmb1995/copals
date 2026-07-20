@@ -5,7 +5,7 @@ import { unique_match_file_glob_or_fail, file_ext, abspath, rm_force } from "../
 import { echo_success, echo_error } from "std/env"
 import { split_lines, parse_int, replace_regex, replace_one, split } from "std/text"
 import { temp_file_create } from "../shlib/temp.ab"
-import { GEN_DIR, GEN_SCRIPTS_DIR, SHLIB_DIR, RESOURCES_DIR, SCHEMA_FILE, DEST_DIR, INSTALLER_DIR } from "../vars.ab"
+import { GEN_DIR, GEN_SCRIPTS_DIR, SHLIB_DIR, RESOURCES_DIR, SCHEMA_FILE, DEST_DIR, INSTALLER_DIR, JSONNET_LIB_DIR } from "../vars.ab"
 import { log_genstep } from "log_genstep.ab"
 import { run_parallel } from "../shlib/parallel.ab"
 import { get_filename_without_prefix } from "../shlib/regex.ab"
@@ -40,7 +40,7 @@ fun collect_flag_pairs(args: [Text], flag: Text): [Text] {
 
 fun _render_jsonnet_into_filepath(jsonnet_path: Text, name: Text, tla_args: [Text]): Text? {
     const tmp_filepath = temp_file_create("-{name}.json")?
-    $ {JSONNET} {tla_args} {jsonnet_path} > {tmp_filepath} $ ?
+    $ {JSONNET} -J {JSONNET_LIB_DIR} {tla_args} {jsonnet_path} > {tmp_filepath} $ ?
     return tmp_filepath
 }
 

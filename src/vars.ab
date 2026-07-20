@@ -25,6 +25,11 @@ pub const RESOURCES_DIR="{_REPO_GEN_DIR}/res"
 pub const SCHEMA_FILE="{RESOURCES_DIR}/config.schema.json"
 pub const SKILLS_DIR="{RESOURCES_DIR}/skills"
 
+// Jsonnet library search path: copals ships reusable `.libsonnet` helpers
+// (e.g. `jsson.libsonnet`) under `copals/src/jsonnetlib`. Presets import them
+// as `import 'jsonnetlib/...'`; `-J <this dir>` lets jsonnet resolve them.
+pub const JSONNET_LIB_DIR="{_REPO_GEN_DIR}/src"
+
 pub const DEST_ROOT="{PROJECT_ROOT}/jberlanga-devtools"
 pub const DEST_DIR="{DEST_ROOT}/src"
 pub const CHANGES_FILE="{DEST_DIR}/.generated_changes"
