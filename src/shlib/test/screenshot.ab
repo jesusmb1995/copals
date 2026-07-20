@@ -200,29 +200,42 @@ pub fun run_scenario(
         log("SKIP: screenshot tools unavailable (required: {required})")
         skip_test("screenshot tools unavailable for {name}")
     } else {
+        // Hard guard: a leaked daemon (e.g. dbus-daemon/ulauncher) can keep the
+        // suite from terminating even after the scenario "finishes". Bound the
+        // whole scenario with `timeout` so it can never hang the run forever.
+        const scen_timeout = 90
         xvfb_start()
         log("[screenshot] {name}: launching: DISPLAY=:99 {launch}")
-        trust $ DISPLAY=:99 eval {launch} </dev/null 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- $
-        let proceed = true
-        if selector != "" {
-            if not window_wait(":99", selector, 15) {
-                kill_apps(cmds)
-                xvfb_stop()
-                log("[screenshot] {name}: window never appeared")
-                trust $ assert_false true $
-                proceed = false
-            }
-        }
-        if proceed {
-            if settle_secs > 0 {
-                log("[screenshot] {name}: settling {settle_secs}s")
-                sleep_secs(settle_secs)
-            }
-            capture(name)
+        let launched = true
+        $ timeout {scen_timeout} bash -c 'DISPLAY=:99 eval {launch}' </dev/null 3>&- 4>&- 5>&- 6>&- 7>&- 8>&- 9>&- $ failed {
+            log("[screenshot] {name}: scenario exceeded {scen_timeout}s guard; forcing cleanup")
             kill_apps(cmds)
             xvfb_stop()
-            log("[screenshot] {name}: comparing against golden")
-            screenshot_assert(name, threshold)
+            trust $ assert_false true $
+            launched = false
+        }
+        if launched {
+            let proceed = true
+            if selector != "" {
+                if not window_wait(":99", selector, 15) {
+                    kill_apps(cmds)
+                    xvfb_stop()
+                    log("[screenshot] {name}: window never appeared")
+                    trust $ assert_false true $
+                    proceed = false
+                }
+            }
+            if proceed {
+                if settle_secs > 0 {
+                    log("[screenshot] {name}: settling {settle_secs}s")
+                    sleep_secs(settle_secs)
+                }
+                capture(name)
+                kill_apps(cmds)
+                xvfb_stop()
+                log("[screenshot] {name}: comparing against golden")
+                screenshot_assert(name, threshold)
+            }
         }
     }
 }
