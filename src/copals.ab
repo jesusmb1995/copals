@@ -14,6 +14,7 @@ import { main_generate } from "gen/generate.ab"
 import { main_container } from "container/container.ab"
 import { shard_main } from "shard.ab"
 import { pipeline_main } from "pipeline.ab"
+import { skill_main } from "skill.ab"
 
 fun print_help(): Null {
     echo("Copals - Amber devtools generator")
@@ -58,6 +59,10 @@ echo("            --commit      Commit container changes to image after successf
     echo("    Flags:  -f, --force    Force re-run (passed to generate)")
     echo("            --reuse        Reuse existing image (passed to container build)")
     echo("")
+    echo("  skill       list                     List bundled skills (name + description)")
+    echo("  skill       get <name>               Print absolute path to a bundled skill dir")
+    echo("                           e.g. cp -r \"\$(copals skill get <name>)\" .ai/")
+    echo("")
     echo("  help                     Show this help message")
 }
 
@@ -72,6 +77,7 @@ fun _main(args): Null? {
         command == "container": main_container(args[2..len(args)])?
         command == "shard": shard_main(args[2..len(args)])?
         command == "pipeline": pipeline_main(args[2..len(args)])?
+        command == "skill": skill_main(args[2..len(args)])?
         command == "help": print_help()
         else {
             echo("Unknown command: {command}")

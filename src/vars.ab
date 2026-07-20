@@ -23,6 +23,7 @@ pub const BASHUNIT = bashunit_path()
 
 pub const RESOURCES_DIR="{_REPO_GEN_DIR}/res"
 pub const SCHEMA_FILE="{RESOURCES_DIR}/config.schema.json"
+pub const SKILLS_DIR="{RESOURCES_DIR}/skills"
 
 pub const DEST_ROOT="{PROJECT_ROOT}/jberlanga-devtools"
 pub const DEST_DIR="{DEST_ROOT}/src"

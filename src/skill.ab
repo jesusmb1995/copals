@@ -1,0 +1,64 @@
+import { file_glob } from "std/fs"
+import { echo_error } from "std/env"
+import { SKILLS_DIR } from "vars.ab"
+import { abspath } from "shlib/fs.ab"
+import { filename } from "shlib/fs.ab"
+
+// Read a single frontmatter field (e.g. "name", "description") from a SKILL.md.
+fun frontmatter_field(md: Text, field: Text): Text {
+    return trust $ sed -n 's/^{field}:[[:space:]]*//p' "{md}" | head -n1 $
+}
+
+// Print bundled skills as "<name>  <description>".
+fun skill_list(): Null {
+    for md in file_glob("{SKILLS_DIR}/*/SKILL.md") {
+        const name = frontmatter_field(md, "name")
+        const desc = frontmatter_field(md, "description")
+        echo("{name}\t{desc}")
+    }
+}
+
+// Print the absolute path to a bundled skill directory so it can be copied, e.g.
+//   cp -r "$(copals skill get <name>)" .ai/
+fun skill_get(name: Text): Null? {
+    const dir = "{SKILLS_DIR}/{name}"
+    $ test -d "{dir}" $ failed {
+        $ echo "available:" >&2 $ ?
+        for md in file_glob("{SKILLS_DIR}/*/SKILL.md") {
+            $ echo "  {frontmatter_field(md, "name")}" >&2 $ ?
+        }
+        echo_error("skill: not found: {name}")
+    }
+    echo(abspath(dir)?)
+}
+
+fun print_skill_help(): Null {
+    echo("Usage: copals skill <list|get>")
+    echo("")
+    echo("  list             List bundled skills (name and description)")
+    echo("  get <name>       Print absolute path to a skill directory, e.g.:")
+    echo("                     cp -r \"\$(copals skill get <name>)\" .ai/")
+}
+
+pub fun skill_main(args: [Text]): Null? {
+    if len(args) < 1 {
+        print_skill_help()
+        fail 1
+    }
+    const sub = args[0]
+    if {
+        sub == "list": skill_list()
+        sub == "get" {
+            if len(args) < 2 {
+                echo_error("skill: usage: skill get <name>")
+                fail 1
+            }
+            skill_get(args[1])?
+        }
+        else {
+            echo_error("skill: unknown subcommand: {sub}")
+            print_skill_help()
+            fail 1
+        }
+    }
+}
