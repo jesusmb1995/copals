@@ -39,6 +39,19 @@
         "type": "boolean"
       }
     },
+    "audit": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "whitelist": {
+          "type": "array",
+          "description": "Glob patterns (shell `case` syntax) for files that are allowed to ship as opaque binaries / archives despite the --audit gate (e.g. ['*.ttf']). Empty by default: the gate blocks on any ELF/PE/shared-object or archive file.",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
     "repositories": {
       "type": "array",
       "items": {

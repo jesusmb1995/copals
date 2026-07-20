@@ -1,0 +1,95 @@
+import { JQ } from "../shlib/vendor.ab"
+import { join, split_lines, replace_one } from "std/text"
+import { file_write } from "std/fs"
+import { temp_file_create } from "../shlib/temp.ab"
+
+// Audit gate: hard-block the bundle when the auditable surface (src/) contains
+// opaque binaries or archives that defeat reviewability. See SAFETY_CODE.md §2.
+//
+// A file is forbidden when EITHER:
+//   * its extension is in FORBIDDEN_EXTS (ELF/PE shared objects, opaque
+//     archives: .zip/.deb/.rpm/.AppImage/.dmg/...), OR
+//   * `file(1)` reports ELF / Mach-O / PE32 / shared-object content.
+//
+// Any forbidden file that is NOT matched by a whitelist glob (shell `case`
+// syntax, from `.audit.whitelist` in the preset) fails the whole generate.
+// This is a hard gate: it `fail`s, so `copals generate --audit` simply blocks
+// instead of shipping non-auditable code.
+
+// Opaque binary / archive extensions that must never ship.
+const FORBIDDEN_EXTS = [
+  "so", "dll", "exe", "o", "a", "class", "jar", "wasm", "pyc", "pyo",
+  "ko", "sys", "dylib", "bundle",
+  "zip", "tar", "tgz", "txz", "tbz2", "deb", "rpm", "AppImage", "dmg",
+  "msi", "cab", "snap",
+]
+
+// Content markers for ELF/Mach-O/PE binaries (extension-independent).
+// `file -b` (type only) is used so the filename cannot trigger a false match
+// (e.g. `coffeesense.lua`), and we avoid bare "executable" so shebang scripts
+// ("ASCII text executable") are not flagged.
+const BINARY_MAGIC = "ELF|Mach-O|PE32|MS-DOS executable|shared object"
+
+// Build the POSIX scan script as a plain string. It is written to a temp file
+// and executed with `bash`, NOT inlined in an amber `$...$` passthrough, because
+// amber parses `$` as a passthrough delimiter and `{...}` as interpolation, which
+// would choke on the shell's own `$1` / `${EXTS[@]}`. `out_file` is an amber-side
+// temp path interpolated literally (no `$`/`{` left in the script).
+fun build_scan_script(dest_dir: Text, whitelist: [Text], out_file: Text): Text {
+  let script_lines = []
+  script_lines += ["#!/bin/bash"]
+  script_lines += ["set -u"]
+  script_lines += ["DEST=\"" + dest_dir + "\""]
+  script_lines += ["OUT=\"" + out_file + "\""]
+  script_lines += ["WL=\"" + join(whitelist, "\n") + "\""]
+  script_lines += ["> \"$OUT\""]
+  script_lines += ["for e in " + join(FORBIDDEN_EXTS, " ") + "; do"]
+  script_lines += ["  find \"$DEST\" -type f -name \"*.$e\" >> \"$OUT\" 2>/dev/null"]
+  script_lines += ["done"]
+  script_lines += ["find \"$DEST\" -type f -print0 | while IFS= read -r -d '' f; do if file -b \"$f\" 2>/dev/null | grep -qiE \"" + BINARY_MAGIC + "\"; then echo \"$f\" >> \"$OUT\"; fi; done"]
+  script_lines += ["LC_ALL=C sort -u \"$OUT\" | while IFS= read -r f; do"]
+  script_lines += ["  hit=0"]
+  script_lines += ["  if [ -n \"$WL\" ]; then"]
+  script_lines += ["    while IFS= read -r w; do [ -z \"$w\" ] && continue; case \"$f\" in"]
+  script_lines += ["      $w) hit=1; break;;"]
+  script_lines += ["    esac; done <<< \"$WL\""]
+  script_lines += ["  fi"]
+  script_lines += ["  [ \"$hit\" = 0 ] && echo \"VIOLATION:$f\""]
+  script_lines += ["done"]
+  return join(script_lines, "\n")
+}
+
+// Read `.audit.whitelist` (array of glob strings) from the rendered config.
+// Missing / empty -> no whitelist (every forbidden file blocks).
+pub fun read_whitelist(config_file: Text): [Text] {
+  const raw = trust $ {JQ} -r '.audit.whitelist // [] | .[]' {config_file} 2>/dev/null $
+  return split_lines(raw)
+}
+
+// Scan `dest_dir` for opaque binaries / archives and HARD-BLOCK (fail) unless
+// every hit is matched by a whitelist glob.
+pub fun audit_bundle(dest_dir: Text, whitelist: [Text] = []): Null? {
+  echo("audit: scanning {dest_dir} for opaque binaries / archives (SAFETY_CODE.md §2)")
+  const out_tmp = temp_file_create("-audit-hits.txt")?
+  const script = build_scan_script(dest_dir, whitelist, out_tmp)
+  const tmp = temp_file_create("-audit-scan.sh")?
+  file_write(tmp, script)?
+  const raw = trust $ bash {tmp} 2>/dev/null $
+  let violations = []
+  for line in split_lines(raw) {
+    if line == "" {
+      continue
+    }
+    const path = replace_one(line, "VIOLATION:", "")
+    violations += [path]
+  }
+  if len(violations) > 0 {
+    echo("audit FAILED: opaque binary / archive files found in auditable surface:")
+    for vp in violations {
+      echo("  - {vp}")
+    }
+    echo("Remove them (e.g. in a repo-hook) or whitelist via `.audit.whitelist`.")
+    fail 1
+  }
+  echo("audit: no opaque binaries / archives in {dest_dir}")
+}

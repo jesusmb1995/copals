@@ -18,6 +18,7 @@ import { jsonnet_render_tla_file } from "../shlib/jsonnet.ab"
 import { symlink_create_dir } from "../shlib/symlink.ab"
 import { has_flag } from "../shlib/flag.ab"
 import { time_ms } from "../shlib/time.ab"
+import { audit_bundle, read_whitelist } from "audit.ab"
 
 const MAX_JOBS = 8
 
@@ -164,7 +165,7 @@ fun build_installer(
     compile_amber_job(hooks_dst_tmp, "{hooks_dst_tmp}/{ab_file}", out_dir, false)?
 }
 
-fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_run: Bool, user_dir: Text, tla_args: [Text]): Null? {
+fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_run: Bool, user_dir: Text, tla_args: [Text], audit: Bool = false): Null? {
     if force_run {
         if file_exists("{installer_dir}/meta.json") {
             rm_force(installer_dir)?
@@ -180,11 +181,16 @@ fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_ru
     build_installer(ids, hooks_src, installer_dir, config_file)?; 
     render_jinja_tree(config_file, dest_dir, dest_dir)?
     run_generate_postrender(hooks_src, dest_dir, config_file, ids)?
+    if audit {
+        const whitelist = read_whitelist(config_file)
+        audit_bundle(dest_dir, whitelist)?
+    }
 }
 
 pub fun main_generate(args): Null? {
     const force_run = has_flag(args, "-f") or has_flag(args, "--force")
     const debug = has_flag(args, "-d") or has_flag(args, "--debug")
+    const audit = has_flag(args, "--audit")
     if debug {
         $ set -x $ ?
     }
@@ -192,6 +198,7 @@ pub fun main_generate(args): Null? {
         echo("generate: missing <user_dir> <config_name> [dest_root]")
         echo("  user_dir     path to user directory (e.g. 'user')")
         echo("  config_name  config preset name (e.g. 'config_personal')")
+        echo("  flags        -f/--force, -d/--debug, --audit (hard-block opaque binaries/archives)")
         fail 1
     }
     const user_dir_input = abspath(args[0])?
@@ -212,9 +219,9 @@ pub fun main_generate(args): Null? {
 
     if len(args) > 2 {
         const dest_root = args[2]
-        generate(config_jsonnet, "{dest_root}/src", dest_root, force_run, user_dir_input, tla_args)?
+        generate(config_jsonnet, "{dest_root}/src", dest_root, force_run, user_dir_input, tla_args, audit)?
     } else {
-        generate(config_jsonnet, DEST_DIR, INSTALLER_DIR, force_run, user_dir_input, tla_args)?
+        generate(config_jsonnet, DEST_DIR, INSTALLER_DIR, force_run, user_dir_input, tla_args, audit)?
     }
     const elapsed = time_ms()? - start_time
     echo_success("Generation finished in {elapsed} ms")
