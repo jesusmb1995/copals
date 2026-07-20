@@ -5,9 +5,11 @@
 // Runs on the HOST (compiled in-container to a self-contained .sh by
 // copals.sh, then executed on the host). Owns the two optional, host-only
 // post-processing flags:
-//   --audit : scan the generated bundle with the copals:security container
-//             (semgrep + trufflehog + clamav). Fails with a non-zero exit if
-//             any issue is found.
+//   --audit : scan the generated bundle for secrets/malware/vulns. Uses the
+//             copals:security container (semgrep + trufflehog + clamav) when
+//             available; otherwise runs res/audit.sh on the host with the same
+//             tools (install locally via `install.sh extensions`). Fails with
+//             a non-zero exit if any issue is found.
 //   --push  : wrap the whole generated bundle in a git repo and push it to the
 //             configured publish remote/branch (host git identity + ssh agent).
 //
@@ -26,7 +28,7 @@ import { echo_error, echo_warning, echo_success } from "std/env"
 import { file_exists, file_read, dir_exists } from "std/fs"
 import { split_lines, split, replace_one } from "std/text"
 import { temp_file_create } from "../shlib/temp.ab"
-import { DEST_ROOT, DEST_DIR } from "../vars.ab"
+import { DEST_ROOT, DEST_DIR, RESOURCES_DIR } from "../vars.ab"
 import { has_flag } from "../shlib/flag.ab"
 import {
     git_init, git_add, git_commit, git_remote_add, git_remote_exists,
@@ -118,22 +120,31 @@ fun publish_bundle(bundle_dir: Text, remote: Text, branch: Text, do_push: Bool):
     }
 }
 
-// Run the security audit over <audit_dir> using the copals:security container.
-// Fails (non-zero) if the image is missing or any tool reports findings.
+// Run the security audit over <audit_dir>. Prefers the copals:security
+// container (semgrep + trufflehog + clamav); when that image is absent, falls
+// back to running res/audit.sh directly on the host — the SAME script baked
+// into the image as ENTRYPOINT — so bare-metal users get the identical audit
+// once `install.sh extensions` has installed the tools. Fails (non-zero) if
+// any tool reports findings, or (local path) if a required tool is missing.
 fun run_audit(audit_dir: Text): Null? {
     let image_present = false
     $ podman image exists {SECURITY_IMAGE} $ succeeded {
         image_present = true
     }
-    if not image_present {
-        echo_error("postprocess: security image {SECURITY_IMAGE} not found.")
-        echo_error("build it with: install.sh security")
-        fail 1
-    }
-    echo("postprocess: auditing {audit_dir} in {SECURITY_IMAGE} ...")
-    $ podman run --rm -v "{PWD_HOST}":"{PWD_HOST}" -w "{PWD_HOST}" {SECURITY_IMAGE} "{audit_dir}" $ failed {
-        echo_error("postprocess: audit FAILED — issues detected in {audit_dir}")
-        fail 1
+    if image_present {
+        echo("postprocess: auditing {audit_dir} in {SECURITY_IMAGE} ...")
+        $ podman run --rm -v "{PWD_HOST}":"{PWD_HOST}" -w "{PWD_HOST}" {SECURITY_IMAGE} "{audit_dir}" $ failed {
+            echo_error("postprocess: audit FAILED — issues detected in {audit_dir}")
+            fail 1
+        }
+    } else {
+        const audit_sh = "{RESOURCES_DIR}/audit.sh"
+        echo("postprocess: {SECURITY_IMAGE} not found, auditing locally via {audit_sh} ...")
+        $ sh "{audit_sh}" "{audit_dir}" $ failed {
+            echo_error("postprocess: local audit FAILED — issues in {audit_dir}, or tools missing")
+            echo_error("postprocess: install tools with `install.sh extensions`, or build the image with `install.sh security`")
+            fail 1
+        }
     }
     echo_success("postprocess: audit OK — no issues in {audit_dir}")
 }

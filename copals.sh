@@ -282,21 +282,38 @@ run_and_postprocess() {
     fi
     [ "$step_rc" -ne 0 ] && { printf 'copals: %s failed (rc=%d)\n' "$subcmd" "$step_rc" >&2; exit "$step_rc"; }
 
-    # Compile postprocess.ab -> .sh in-container (writes into the bind-mounted
-    # repo), then run the self-contained .sh on the HOST with the SAME args.
+    # Compile postprocess.ab -> .sh, then run the self-contained .sh on the
+    # HOST with the SAME args. Mirrors the generate-step dispatch above: local
+    # compile with the vendored amber when COPALS_RUN=local or (auto + no
+    # image); in-container compile (writing into the bind-mounted repo)
+    # otherwise. Lets bare-metal users run `generate --audit` without building
+    # copals:dev, as long as `copals/dependencies.sh` populated vendor/.
     post_src="$self_dir/src/gen/postprocess.ab"
     post_out="$self_dir/src/gen/postprocess.sh"
     if [ ! -f "$post_src" ]; then
         printf 'copals: postprocess source not found at %s\n' "$post_src" >&2
         exit 1
     fi
-    printf 'copals: compiling postprocess inside %s ...\n' "$COPALS_IMAGE" >&2
-    podman run --rm \
-        -v "$PWD":"$PWD" -w "$PWD" \
-        --entrypoint /bin/sh \
-        "$COPALS_IMAGE" -c \
-        'PATH=/usr/lib/copals/vendor:$PATH amber build "'"$post_src"'" "'"$post_out"'"' \
-        || { printf 'copals: in-container amber build failed for postprocess\n' >&2; exit 1; }
+    if [ "$COPALS_RUN" = "local" ] || { [ "$COPALS_RUN" = "auto" ] && ! image_exists; }; then
+        lib_dir=$(get_lib_dir) || {
+            printf 'copals: could not locate source tree (src/copals.ab + vendor/) for local compile\n' >&2
+            printf 'hint: run `copals/dependencies.sh` to populate copals/vendor/\n' >&2
+            exit 1
+        }
+        printf 'copals: compiling postprocess locally ...\n' >&2
+        PATH="$lib_dir/vendor:$PATH" amber build "$post_src" "$post_out" || {
+            printf 'copals: local amber build failed for postprocess\n' >&2
+            exit 1
+        }
+    else
+        printf 'copals: compiling postprocess inside %s ...\n' "$COPALS_IMAGE" >&2
+        podman run --rm \
+            -v "$PWD":"$PWD" -w "$PWD" \
+            --entrypoint /bin/sh \
+            "$COPALS_IMAGE" -c \
+            'PATH=/usr/lib/copals/vendor:$PATH amber build "'"$post_src"'" "'"$post_out"'"' \
+            || { printf 'copals: in-container amber build failed for postprocess\n' >&2; exit 1; }
+    fi
     if [ ! -f "$post_out" ]; then
         printf 'copals: expected compiled postprocess not found at %s\n' "$post_out" >&2
         exit 1

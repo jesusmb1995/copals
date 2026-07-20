@@ -2,35 +2,68 @@
 set -e
 
 # --- extensions -------------------------------------------------------------
-# `dependencies.sh --extensions` installs the security/audit toolset (semgrep,
-# trufflehog, clamav) via brew. Shared between:
-#   - the copals:security image (res/security.Dockerfile), and
-#   - the host (`install.sh extensions`), so a host user can run the same audit
-#     locally without the container.
-# It exits before the vendor-tool fetch below, so neither the xz/unzip/sha256sum
-# requirements nor the bashunit installer apply on this path.
+# `dependencies.sh --extensions` installs the security/audit toolset (opengrep,
+# trufflehog, trivy, clamav). opengrep is the open-source community fork of the
+# semgrep engine — same OSS rule coverage (`--config=auto` resolves to the
+# identical community rule pack), so semgrep is not installed separately.
+# Shared between the copals:security image (res/security.Dockerfile) and the
+# host (`install.sh extensions`), so a host user can run the same audit locally
+# without the container. It exits before the vendor-tool fetch below, so neither
+# the xz/unzip/sha256sum requirements nor the bashunit installer apply here.
 if [ "${1:-}" = "--extensions" ]; then
-    if ! command -v brew >/dev/null 2>&1; then
+    # Put brew on PATH from any known install location. Disk-aware (not just
+    # PATH): on Linux hosts /home/linuxbrew/.linuxbrew/bin usually isn't in
+    # the default PATH, so a PATH-only `command -v brew` check would falsely
+    # trigger the network bootstrap below and re-run the Homebrew installer
+    # over an existing install — which fails on stale lock dirs and clobbers
+    # taps. Check the same disk paths the shellenv loop already knew about.
+    source_brew_shellenv() {
+        for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+            if [ -x "$_brew" ]; then
+                eval "$("$_brew" shellenv)"
+                return 0
+            fi
+        done
+        return 1
+    }
+    # Source any brew found on disk first; only bootstrap from the network if
+    # none was found (and thus none is on PATH either).
+    if ! source_brew_shellenv && ! command -v brew >/dev/null 2>&1; then
         if ! command -v curl >/dev/null 2>&1; then
             echo "error: curl is required to bootstrap brew" >&2
             exit 1
         fi
         NONINTERACTIVE=1 /bin/bash -c \
             "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        # The Linux installer installs to /home/linuxbrew/.linuxbrew/bin which
+        # is NOT on PATH by default, so re-source to pick it up.
+        source_brew_shellenv || true
     fi
-    # Source brew's shellenv so `brew` is on PATH right after a fresh install
-    # (covers Linuxbrew in the container and both macOS locations on the host).
-    for _brew in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
-        if [ -x "$_brew" ]; then
-            eval "$("$_brew" shellenv)"
-            break
-        fi
-    done
     if ! command -v brew >/dev/null 2>&1; then
         echo "error: brew not available after bootstrap" >&2
         exit 1
     fi
-    HOMEBREW_NO_INSTALL_CLEANUP=1 brew install semgrep trufflehog clamav
+    HOMEBREW_NO_INSTALL_CLEANUP=1 brew install trufflehog trivy clamav
+
+    # opengrep: open-source semgrep fork (SAST). Not on brew, so install via the
+    # official installer pinned to an immutable commit (the commit hash IS the
+    # installer pin) plus a sha256 belt-and-suspenders check, and a pinned
+    # release version passed with -v. The installer lands the binary at
+    # ~/.opengrep/cli/<ver>/opengrep and symlinks ~/.local/bin/opengrep.
+    OPENGREP_VERSION="v1.25.0"
+    OPENGREP_INSTALL_COMMIT="d77978ddcc4c3bf0924fe1230026efa624aa70e8"
+    OPENGREP_INSTALL_SHA256="765f8eba6df9349a172ce3103d2e8f21966d3826b6cb2d84b97442b0883a6d5b"
+    OPENGREP_INSTALL_URL="https://raw.githubusercontent.com/opengrep/opengrep/${OPENGREP_INSTALL_COMMIT}/install.sh"
+    # The installer only creates the ~/.local/bin symlink if that dir already
+    # exists, and audit.sh needs opengrep on PATH, so ensure it is present.
+    mkdir -p "${HOME}/.local/bin"
+    if ! command -v opengrep >/dev/null 2>&1 && [ ! -x "${HOME}/.local/bin/opengrep" ]; then
+        _og_tmp="$(mktemp)"
+        curl -fsSL "${OPENGREP_INSTALL_URL}" -o "${_og_tmp}"
+        echo "${OPENGREP_INSTALL_SHA256}  ${_og_tmp}" | sha256sum -c -
+        bash "${_og_tmp}" -v "${OPENGREP_VERSION}"
+        rm -f "${_og_tmp}"
+    fi
     exit 0
 fi
 
