@@ -1,7 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
-  "required": ["repositories"],
+  "required": [
+    "repositories"
+  ],
   "properties": {
     "Description": {
       "type": "string"
@@ -56,7 +58,13 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "url", "target", "enabled", "clone"],
+        "required": [
+          "id",
+          "url",
+          "target",
+          "enabled",
+          "clone"
+        ],
         "properties": {
           "id": {
             "type": "string"
@@ -120,6 +128,14 @@
         }
       },
       "additionalProperties": false
+    },
+    "whitelist_url": {
+      "type": "object",
+      "description": "Per-file URL whitelist for --try-prune-fetch-and-urls. Keys are paths relative to src/; values are exact URL strings that must be preserved in that file even after pruning.",
+      "additionalProperties": {
+        "type": "string",
+        "format": "uri"
+      }
     }
   },
   "additionalProperties": false

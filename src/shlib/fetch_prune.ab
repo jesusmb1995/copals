@@ -1,0 +1,94 @@
+// fetch_prune.ab — offline-ify a generated bundle by replacing URLs with
+// BAD_URL_ markers and neutralising fetch commands (curl, wget, git clone).
+//
+// Idempotent, safe to run multiple times. Use as a post-generation step:
+//
+//   import { prune_tree } from "../shlib/fetch_prune.ab"
+//   ...
+//   prune_tree(dest_root)?
+//   prune_tree(dest_root, config_file)?   // with whitelist support
+
+import { echo_success } from "std/env"
+import { JQ } from "vendor.ab"
+import { split_lines, split, replace_one } from "std/text"
+
+// prune_urls — Replace every https:// and http:// with BAD_URL_ across all
+// non-binary, non-.md text files under <root>.
+pub fun prune_urls(root: Text): Null? {
+    $ find {root} -type f \
+        -not -path "*/.git/*" \
+        -not -name "*.md" \
+        -not -name "*.png" -not -name "*.jpg" -not -name "*.jpeg" \
+        -not -name "*.gif" -not -name "*.ico" -not -name "*.svg" \
+        -not -name "*.woff" -not -name "*.woff2" -not -name "*.ttf" -not -name "*.eot" \
+        -not -name "*.otf" -not -name "*.pdf" -not -name "*.zip" -not -name "*.tar.gz" \
+        -not -name "*.gz" -not -name "*.xz" -not -name "*.bz2" \
+        -not -name "*.o" -not -name "*.so" -not -name "*.a" \
+        -not -name "*.pyc" -not -name "*.class" \
+        -print0 | xargs -0 -r sed -i 's|https://|BAD_URL_|g' 2>/dev/null || true $ ?
+    $ find {root} -type f \
+        -not -path "*/.git/*" \
+        -not -name "*.md" \
+        -not -name "*.png" -not -name "*.jpg" -not -name "*.jpeg" \
+        -not -name "*.gif" -not -name "*.ico" -not -name "*.svg" \
+        -not -name "*.woff" -not -name "*.woff2" -not -name "*.ttf" -not -name "*.eot" \
+        -not -name "*.otf" -not -name "*.pdf" -not -name "*.zip" -not -name "*.tar.gz" \
+        -not -name "*.gz" -not -name "*.xz" -not -name "*.bz2" \
+        -not -name "*.o" -not -name "*.so" -not -name "*.a" \
+        -not -name "*.pyc" -not -name "*.class" \
+        -print0 | xargs -0 -r sed -i 's|http://|BAD_URL_|g' 2>/dev/null || true $ ?
+}
+
+// prune_commands — Neutralise `curl`, `wget` and `git clone` commands in shell
+// and Lua scripts under <root>.
+pub fun prune_commands(root: Text): Null? {
+    $ find {root} -type f \( -name "*.sh" -o -name "*.zsh" -o -name "*.bash" \) \
+        -not -path "*/.git/*" \
+        -print0 | xargs -0 -r sed -i \
+        -e 's|^\([[:space:]]*\)curl |\1echo "OFFLINE: no curl" # curl |g' \
+        -e 's|^\([[:space:]]*\)wget |\1echo "OFFLINE: no wget" # wget |g' \
+        -e 's|git clone |echo "OFFLINE: no git clone" # git clone |g' \
+        2>/dev/null || true $ ?
+    $ find {root} -type f -name "*.lua" \
+        -not -path "*/.git/*" \
+        -print0 | xargs -0 -r sed -i \
+        -e 's|git clone |echo "OFFLINE: no git clone" # git clone |g' \
+        2>/dev/null || true $ ?
+}
+
+// restore_whitelisted_urls — After the blanket prune, restore specific URLs
+// that were whitelisted in the config. The config's whitelist_url map is:
+//   { "path/relative/to/src": "https://..." }
+// Each entry is restored with a targeted sed so the file ends up with the
+// original URL intact while every other URL stays as BAD_URL_.
+pub fun restore_whitelisted_urls(root: Text, config_file: Text): Null? {
+    const raw = $ {JQ} -r '.whitelist_url // {} | to_entries[] | "\(.key)|\(.value)"' {config_file} $ ?
+    const entries = split_lines(raw)
+    for line in entries {
+        if line == "" { continue }
+        const parts = split("|", line)
+        if len(parts) < 2 { continue }
+        const rel_path = parts[0]
+        const url = parts[1]
+        const file_path = "{root}/{rel_path}"
+        let bad_url = ""
+        if replace_one(url, "https://", "") != url {
+            bad_url = replace_one(url, "https://", "BAD_URL_")
+        } else {
+            bad_url = replace_one(url, "http://", "BAD_URL_")
+        }
+        $ sed -i "s|{bad_url}|{url}|g" "{file_path}" 2>/dev/null || true $ ?
+    }
+}
+
+// prune_tree — one-shot convenience: prunes URLs then fetch commands under
+// <root>/src. Pass config_file to honour whitelist_url restores.
+pub fun prune_tree(root: Text, config_file: Text = ""): Null? {
+    const src = "{root}/src"
+    prune_urls(src)?
+    prune_commands(src)?
+    if config_file != "" {
+        restore_whitelisted_urls(src, config_file)?
+    }
+    echo_success("Pruned fetch commands and URLs in {src}")
+}

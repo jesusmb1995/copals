@@ -18,6 +18,9 @@ pub fun pipeline_main(args: [Text]): Null? {
     if force {
         gen_args += ["--force"]
     }
+    if has_flag(args, "--try-prune-fetch-and-urls") {
+        gen_args += ["--try-prune-fetch-and-urls"]
+    }
 
     let build_args = ["build", bundle_dir]
     if reuse {
