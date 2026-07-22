@@ -28,7 +28,8 @@ import { echo_error, echo_warning, echo_success } from "std/env"
 import { file_exists, file_read, dir_exists } from "std/fs"
 import { split_lines, split, replace_one } from "std/text"
 import { temp_file_create } from "../shlib/temp.ab"
-import { DEST_ROOT, DEST_DIR, RESOURCES_DIR } from "../vars.ab"
+import { DEST_ROOT, DEST_DIR, RESOURCES_DIR, JSONNET_LIB_DIR } from "../vars.ab"
+import { JSONNET } from "../shlib/vendor.ab"
 import { has_flag } from "../shlib/flag.ab"
 import {
     git_init, git_add, git_commit, git_remote_add, git_remote_exists,
@@ -62,18 +63,18 @@ fun resolve_config_path(user_dir: Text, config_name: Text): Text? {
     fail 1
 }
 
-// Render the config in-container (copals:dev has jsonnet + jq) and extract the
-// .publish.remote / .publish.branch fields into a temp file (two tab-separated
-// values: <remote>\t<branch>). Returns the temp file path; empty values mean
-// "no publish configured".
+// Render the config and extract the .publish.remote / .publish.branch fields
+// into a temp file (two tab-separated values: <remote>\t<branch>).
+// Runs jsonnet/jq on the host (both are vendored in $PATH if needed).
+// Empty values mean "no publish configured".
 fun resolve_publish(user_dir: Text, config_name: Text): Text? {
     const config_path = resolve_config_path(user_dir, config_name)?
     const cfg_tmp = temp_file_create("copals-publish.json")?
     const is_jsonnet = replace_one(config_path, ".jsonnet", "") != config_path
     if is_jsonnet {
-        $ podman run --rm -v "{PWD_HOST}":"{PWD_HOST}" -w "{PWD_HOST}" --entrypoint /bin/sh {COPALS_IMAGE} -c 'PATH=/usr/lib/copals/vendor:\$PATH; jsonnet "{config_path}" | jq -r "[.publish.remote // \"\", .publish.branch // \"\"] | @tsv"' > "{cfg_tmp}" $ ?
+        $ {JSONNET} -J {JSONNET_LIB_DIR} "{config_path}" | jq -r '[.publish.remote // "", .publish.branch // ""] | @tsv' > "{cfg_tmp}" $ ?
     } else {
-        $ podman run --rm -v "{PWD_HOST}":"{PWD_HOST}" -w "{PWD_HOST}" --entrypoint /bin/sh {COPALS_IMAGE} -c 'PATH=/usr/lib/copals/vendor:\$PATH; jq -r "[.publish.remote // \"\", .publish.branch // \"\"] | @tsv"' "{config_path}" > "{cfg_tmp}" $ ?
+        $ jq -r '[.publish.remote // "", .publish.branch // ""] | @tsv' "{config_path}" > "{cfg_tmp}" $ ?
     }
     return cfg_tmp
 }
@@ -196,7 +197,7 @@ pub fun main_postprocess(args: [Text]): Null? {
         let remote = ""
         let branch = ""
         if len(rows) > 0 {
-            const fields = split("\t", rows[0])
+            const fields = split(rows[0], "\t")
             if len(fields) > 0 { remote = fields[0] }
             if len(fields) > 1 { branch = fields[1] }
         }

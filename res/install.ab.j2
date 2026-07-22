@@ -61,7 +61,7 @@ fun run_step(step: Text) {
 // the last-installed state, lists changes, asks Y/n, and re-runs installer
 // steps only for the changed repos.
 fun cmd_update(): Null? {
-    const script_dir = $ cd "$(dirname "$(readlink -f "$0")")" && pwd $ ?
+    const script_dir = $ cd "\$(dirname "\$(readlink -f "\$0")")" && pwd $ ?
     const meta_path = "{script_dir}/meta.json"
     const state_path = "{script_dir}/.last_installed.json"
 
@@ -134,7 +134,7 @@ fun cmd_update(): Null? {
     }
 
     echo("Apply updates? [Y/n]")
-    const ans = $ read -r __ans; printf '%s' "$__ans" $ ?
+    const ans = $ dd bs=1 count=100 status=none < /dev/tty 2>/dev/null | tr -d '\n' $ ?
     if ans == "n" or ans == "N" or ans == "no" or ans == "NO" {
         echo("update: aborted")
         return null
@@ -156,9 +156,9 @@ main(raw_args) {
         install_{{ repo.id }}()
 {% endif %}
 {% endfor %}
-    } else if len(args) == 1 and args[0] == "update" {
+    } if len(args) == 1 and args[0] == "update" {
         cmd_update()?
-    } else {
+    } if len(args) > 1 {
         for step in args {
             run_step(step)
         }
