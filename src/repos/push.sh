@@ -10,6 +10,9 @@ fi
 repos_dir="$target/repos"
 [ -d "$repos_dir" ] || { echo "no repos dir at $repos_dir" >&2; exit 1; }
 
+versions_file="$repos_dir/version.sh"
+[ -f "$versions_file" ] && source "$versions_file"
+
 for item in "$repos_dir"/*/; do
   [ -d "$item/.git" ] || continue
   name="$(basename "$item")"
@@ -29,4 +32,6 @@ for item in "$repos_dir"/*/; do
   else
     echo "[$name] clean, skipped"
   fi
+
+  echo "${name}=\"$(git -C "$item" rev-parse HEAD)\"" >> "$versions_file"
 done
