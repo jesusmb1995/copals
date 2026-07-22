@@ -351,7 +351,7 @@ case "${0##*/}" in
             # repos runs on the host directly (needs git credentials for push/pull).
             if [ "${1:-}" = "repos" ]; then
                 shift
-                exec sh "$self_dir/src/repos.sh" "$@"
+                exec sh "$self_dir/src/repos.sh" $@
             fi
             # launch-window must run on the host (see run_launch_window_host).
             # Only special-case it when we would otherwise run in the container

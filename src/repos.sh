@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eu
 
 self_dir="$(cd "$(dirname "$0")" && pwd)"
 project_root="$(cd "$self_dir/../.." && pwd)"
@@ -7,6 +7,14 @@ scripts_dir="$self_dir/repos"
 
 sub="${1:-}"
 path="${2:-}"
+
+if [ -z "$sub" ]; then
+  echo "Missing command: $@"
+fi
+
+if [ -z "$path" ]; then
+  echo "Missing path: $@"
+fi
 
 if [ -z "$sub" ] || [ -z "$path" ]; then
     echo "Usage: copals repos <status|push|pull> <path>"
