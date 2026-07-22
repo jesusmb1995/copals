@@ -100,10 +100,10 @@ fun backfill_repo_hashes(meta_json_path: Text, repo_ids: [Text], cache_dir: Text
     }
     if count == 0 { return null }
     const frag = temp_file_create("repo-hashes-XXXXXX.json")?
-    file_write(frag, "{" + pairs_csv + "}")?
+    file_write(frag, "\{" + pairs_csv + "\}")?
     // ponytail: static jq filter avoids amber brace-parsing in inline strings.
     $ {JQ} --slurpfile f "{frag}" -f "{RESOURCES_DIR}/merge-repo-hashes.jq" "{meta_json_path}" > "{meta_json_path}.tmp" $ ?
-    mv "{meta_json_path}.tmp" "{meta_json_path}" $ ?
+    mv("{meta_json_path}.tmp", "{meta_json_path}") failed { return null }
     rm_force("{frag}")?
     log_genstep("backfilled-repo-hashes", meta_json_path)
 }
