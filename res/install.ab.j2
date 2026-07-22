@@ -3,6 +3,9 @@
 // wrap it once at the installer level:  install_x() { x_impl() failed { exit(1) } }
 // So every install_*() is infallible and main() stays a plain sequence of calls.
 
+import { file_exists, file_read } from "std/fs"
+import { split, split_lines } from "std/text"
+
 {% for repo in repositories %}
 {% if repo.enabled %}
 import { install_{{ repo.id }} } from "{{ repo.id }}.ab"
@@ -52,6 +55,99 @@ fun run_step(step: Text) {
     }
 }
 
+// ---- update subcommand ----
+// Per-repo content hashes are baked into meta.json at generate time via
+// backfill_repo_hashes in generate.ab.  This subcommand diffs them against
+// the last-installed state, lists changes, asks Y/n, and re-runs installer
+// steps only for the changed repos.
+fun cmd_update(): Null? {
+    const script_dir = $ cd "$(dirname "$(readlink -f "$0")")" && pwd $ ?
+    const meta_path = "{script_dir}/meta.json"
+    const state_path = "{script_dir}/.last_installed.json"
+
+    const new_lines = $ jq -r '.repo_hashes | to_entries[] | "\(.key)\t\(.value)"' "{meta_path}" $ ?
+    let old_lines = ""
+    if file_exists(state_path) {
+        old_lines = $ jq -r '.repo_hashes | to_entries[] | "\(.key)\t\(.value)"' "{state_path}" $ ?
+    }
+
+    let old_keys = []
+    let old_vals = []
+    if old_lines != "" {
+        const rows = split_lines(old_lines)
+        for row in rows {
+            if row == "" { continue }
+            const parts = split("\t", row)
+            if len(parts) >= 2 {
+                old_keys += [parts[0]]
+                old_vals += [parts[1]]
+            }
+        }
+    }
+
+    let changed = []
+    const new_rows = split_lines(new_lines)
+    for row in new_rows {
+        if row == "" { continue }
+        const parts = split("\t", row)
+        if len(parts) < 2 { continue }
+        const key = parts[0]
+        const val = parts[1]
+        let matched = false
+        for i in 0..len(old_keys) {
+            if old_keys[i] == key {
+                if old_vals[i] != val {
+                    changed += [key]
+                }
+                matched = true
+                break
+            }
+        }
+        if not matched {
+            changed += [key]
+        }
+    }
+
+    for ok in old_keys {
+        let found = false
+        for row in new_rows {
+            if row == "" { continue }
+            const parts = split("\t", row)
+            if len(parts) >= 2 and parts[0] == ok {
+                found = true
+                break
+            }
+        }
+        if not found {
+            changed += [ok]
+        }
+    }
+
+    if len(changed) == 0 {
+        echo("update: all repos up to date")
+        return null
+    }
+
+    echo("update: {len(changed)} repo(s) changed:")
+    for c in changed {
+        echo("  - {c}")
+    }
+
+    echo("Apply updates? [Y/n]")
+    const ans = $ read -r __ans; printf '%s' "$__ans" $ ?
+    if ans == "n" or ans == "N" or ans == "no" or ans == "NO" {
+        echo("update: aborted")
+        return null
+    }
+
+    for c in changed {
+        run_step(c)
+    }
+
+    $ cp "{meta_path}" "{state_path}" $ ?
+    echo("update: done")
+}
+
 main(raw_args) {
     const args = raw_args[1..len(raw_args)]
     if len(args) == 0 {
@@ -60,6 +156,8 @@ main(raw_args) {
         install_{{ repo.id }}()
 {% endif %}
 {% endfor %}
+    } else if len(args) == 1 and args[0] == "update" {
+        cmd_update()?
     } else {
         for step in args {
             run_step(step)

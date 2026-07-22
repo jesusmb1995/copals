@@ -1,9 +1,9 @@
 #!/usr/bin/env amber
 
-import { file_read, dir_create, dir_exists, temp_dir_create, file_exists } from "std/fs"
+import { file_read, file_write, dir_create, dir_exists, temp_dir_create, file_exists } from "std/fs"
 import { unique_match_file_glob_or_fail, file_ext, abspath, rm_force } from "../shlib/fs.ab"
 import { echo_success, echo_error } from "std/env"
-import { split_lines, parse_int, replace_regex, replace_one, split } from "std/text"
+import { split_lines, parse_int, replace_regex, replace_one, split, join } from "std/text"
 import { temp_file_create } from "../shlib/temp.ab"
 import { GEN_DIR, GEN_SCRIPTS_DIR, SHLIB_DIR, RESOURCES_DIR, SCHEMA_FILE, DEST_DIR, INSTALLER_DIR, JSONNET_LIB_DIR } from "../vars.ab"
 import { log_genstep } from "log_genstep.ab"
@@ -15,6 +15,7 @@ import { write_json_array } from "../shlib/json.ab"
 import { json_value } from "json_config.ab"
 import { JQ, JSONNET, JSONSCHEMA, LUA } from "../shlib/vendor.ab"
 import { jsonnet_render_tla_file } from "../shlib/jsonnet.ab"
+import { get_cache_dir } from "../shlib/cache.ab"
 import { symlink_create_dir } from "../shlib/symlink.ab"
 import { has_flag } from "../shlib/flag.ab"
 import { time_ms } from "../shlib/time.ab"
@@ -71,6 +72,42 @@ fun render_metadata(config_file: Text, out_json_path: Text): Null? {
     )?
     log_genstep("rendered", out_json_path)
 }
+
+// backfill_repo_hashes: read the per-repo content hash that process_repo.ab
+// already wrote to the cache state dir for each enabled repo, and bake it
+// into the bundle meta.json as a top-level repo_hashes map. The puller-side
+// updater diffs this map against its persisted last-installed copy to decide
+// which repos to re-install. Generated state is independent: cache state is
+// local-only and never shipped.
+//
+// ponytail: build the JSON object as plain text and let jq slurpfile parse
+// it. The braces in jq filter expressions trip amber command-literal parsing
+// unless written as plain text.
+fun backfill_repo_hashes(meta_json_path: Text, repo_ids: [Text], cache_dir: Text): Null? {
+    const state_dir = "{cache_dir}/generate_state"
+    let pairs_csv = ""
+    let count = 0
+    for repo_id in repo_ids {
+        const state_file = "{state_dir}/repo__{repo_id}"
+        if not file_exists(state_file) {
+            continue
+        }
+        const h = $ sed -n '1p' "{state_file}" $ ?
+        if h == "" { continue }
+        if count > 0 { pairs_csv += "," }
+        pairs_csv += "\"{repo_id}\":\"{h}\""
+        count += 1
+    }
+    if count == 0 { return null }
+    const frag = temp_file_create("repo-hashes-XXXXXX.json")?
+    file_write(frag, "{" + pairs_csv + "}")?
+    // ponytail: static jq filter avoids amber brace-parsing in inline strings.
+    $ {JQ} --slurpfile f "{frag}" -f "{RESOURCES_DIR}/merge-repo-hashes.jq" "{meta_json_path}" > "{meta_json_path}.tmp" $ ?
+    mv "{meta_json_path}.tmp" "{meta_json_path}" $ ?
+    rm_force("{frag}")?
+    log_genstep("backfilled-repo-hashes", meta_json_path)
+}
+
 
 pub fun resolve_config_path(user_dir: Text, config_name: Text): Text? {
     if replace_one(config_name, "/", "") != config_name {
@@ -177,6 +214,8 @@ fun generate(config_jsonnet: Text, dest_dir: Text, installer_dir: Text, force_ru
     const config_file = render_jsonnet_into_filepath(config_jsonnet, tla_args)?
     render_metadata(config_file, "{installer_dir}/meta.json")?
     const ids = process_repos(dest_dir, config_file, force_run, user_dir)?
+    const cache_dir = get_cache_dir("jbdt-process-repo")?
+    backfill_repo_hashes("{installer_dir}/meta.json", ids, cache_dir)?
     const hooks_src = "{user_dir}/repo-hooks"
     run_generate_post(hooks_src, dest_dir, config_file)?
     build_installer(ids, hooks_src, installer_dir, config_file)?; 
