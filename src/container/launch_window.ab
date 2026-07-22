@@ -1,5 +1,5 @@
 #!/usr/bin/env amber
-// launch.ab - Launch i3 inside a container and view it on the host.
+// launch.ab - Launch i3 inside a hardened container and view it on the host.
 //
 // Transport is selected by host OS:
 //   - Linux : Xephyr nested X window on the host, i3 connects to it via a
@@ -10,6 +10,29 @@
 //             Software rendering is mandatory: the podman machine VM (applehv)
 //             exposes no GPU to Linux guests.
 //
+// Security: every invocation runs in a sandboxed container. Even GUI-only runs
+// (just opening a window) get the same hardening so that whatever ends up
+// running inside -- via the i3 terminal today, via a future --cmd later --
+// never escapes the container.
+//
+//   --read-only           Rootfs immutable; malware cannot modify /usr/bin etc.
+//   --cap-drop ALL        Zero capabilities; no CAP_NET_RAW, CAP_SYS_ADMIN.
+//   --security-opt no-new-privileges  Block setuid escalation.
+//   --user=1000          Run as non-root inside the container.
+//   --tmpfs /tmp          Writable ephemeral temp (Xvfb/x11vnc logs etc.).
+//   --tmpfs /home/user    Writable ephemeral $HOME (i3 config, locks).
+//
+// On macOS no extra check is needed (podman-machine is a Linux VM). On Linux
+// we require either SELinux (MAC) or --noselinux to acknowledge the gap.
+//
+// `--workspace <path>` (alias `-w`) mounts the given host directory rw inside
+// at /home/user/workspace. Only /home/user/workspace -- not all of $HOME -- is
+// the host bind mount. Validation rejects filesystem root, system dirs,
+// $HOME itself, and (by default) anything that isn't a git repo.
+//
+// The full `podman run ...` command is printed to stdout before execution so
+// the user can audit it.
+//
 // TODO: copals should install these display deps directly via a few reusable
 // preset hooks (e.g. a copals-provided "gui-vnc" preset) rather than relying
 // on the user's UI apt hook to bolt on x11vnc/xvfb. See the stopgap note in
@@ -17,22 +40,27 @@
 //
 // Usage:
 //   launch_window.ab <image[:tag]> [--geometry WxHxD] [--port N]
+//                    [--workspace <path>|-w <path>] [--network <mode>]
+//                    [--noselinux] [--allow-any-dir]
 // Examples:
 //   amber launch_window.ab jberlanga-devtools:latest
-//   amber launch_window.ab jberlanga-devtools:latest --geometry 1920x1080x24 --port 5901
-// TODO this is launched on the host, must adapt copals.sh to build (e.g. through container) and execute compiled sh directly at host
+//   amber launch_window.ab debian:testing -w ./my-project
+//   amber launch_window.ab alpine:latest -w . --network none
+//   amber launch_window.ab ubuntu:latest -w /tmp/work --noselinux
 
 import { parse_int, split } from "std/text"
 import { echo_warning, echo_error } from "std/env"
 import { require_or_die } from "../shlib/cmd.ab"
 import { min_int } from "../shlib/math.ab"
-import { flag_value } from "../shlib/flag.ab"
+import { flag_value, has_flag } from "../shlib/flag.ab"
 import { pkill_exact, pkill_glob } from "../shlib/process.ab"
-import { is_macos } from "../shlib/os.ab"
+import { is_macos, is_linux } from "../shlib/os.ab"
+import { abspath } from "../shlib/fs.ab"
 
 const MAX_WIDTH = 1680
 const MAX_HEIGHT = 1050
 const XEPHYR_DISPLAY = ":2"
+const XEPHYR_SOCKET = "/tmp/.X11-unix/X2"
 
 // VNC defaults (macOS). Geometry is WxHxDepth as Xvfb expects.
 // 1280x800x24 is the verified-working size (matches the manual recipe in
@@ -42,7 +70,163 @@ const DEFAULT_VNC_GEOMETRY = "1280x800x24"
 const DEFAULT_VNC_PORT = 5900
 const VNC_DISPLAY = ":0"
 
+// Workspace mount target inside the container.
+const WORKSPACE_DIR = "/home/user/workspace"
+
 // abandoned x11docker due to no gpu support for alacritty
+
+// ---------------------------------------------------------------------------
+// Security: SELinux / VM gate
+// ---------------------------------------------------------------------------
+
+// True while the host reports SELinux is enabled. `selinuxenabled` returns 0
+// on enforcing/permissive, >0 if disabled/unavailable. We swallow stderr so
+// the command-not-found case (not installed at all) reads as "no".
+fun selinux_enabled(): Bool {
+    let yes = false
+    $ selinuxenabled 2>/dev/null $ succeeded {
+        yes = true
+    }
+    return yes
+}
+
+// Refuse to run without a syscall-level isolation backend. macOS pods run in
+// a Linux VM (applehv) which is a sandbox even without SELinux, so it is
+// always considered safe. Linux requires SELinux OR an explicit --noselinux
+// acknowledgement.
+fun verify_safe(noselinux: Bool): Null {
+    if is_macos() {
+        return null
+    }
+    if is_linux() {
+        if selinux_enabled() {
+            return null
+        }
+        if noselinux {
+            echo_warning("launch: --noselinux acknowledged; running without SELinux MAC on Linux.")
+            return null
+        }
+        echo_error("launch: Linux host without SELinux. Re-run with --noselinux to proceed.")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Security: workspace path validation
+// ---------------------------------------------------------------------------
+
+// System paths that must never be bind-mounted into a sandboxed container.
+// These are absolute, host-side prefixes; anything under them is rejected.
+const FORBIDDEN_PREFIXES = [
+    "/tmp", "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64",
+    "/Users", "/Applications", "/opt",
+]
+
+// True if abs starts with a prefix from the list, e.g. "/tmp" matches "/tmp/x" but "tmp" or "/tmpx" dont.
+fun has_prefix(abs: Text, prefix: Text): Bool {
+    let yes = false
+    $ [[ "{abs}" == {prefix}/* || "{abs}" == {prefix} ]] $ succeeded {
+        yes = true
+    }
+    return yes
+}
+fun home_dir(): Text {
+    let h = ""
+    $ printenv HOME $ succeeded {
+        h = trust $ printenv HOME $
+    }
+    return h
+}
+
+// Positive check that the given absolute path is the root of a git working
+// tree (or a subdirectory of one). We use `git rev-parse --git-dir` which
+// exits 0 for any path inside a repo and exits non-zero otherwise. Some
+// `--show-toplevel` paths point at `.git` itself when run inside .git, so
+// sticking with rev-parse keeps the check uniform.
+fun is_git_repo(abs: Text): Bool {
+    let yes = false
+    $ git -C "{abs}" rev-parse --git-dir >/dev/null 2>&1 $ succeeded {
+        yes = true
+    }
+    return yes
+}
+
+// Validate that `raw` is acceptable as a `--workspace` mount source. On
+// success returns the absolute path. On failure exits with an error.
+//
+// Rules:
+//   1. Resolve to an absolute path; refuse to fail resolution (defensive).
+//   2. Reject "/" (filesystem root).
+//   3. Reject any path under the forbidden system prefixes.
+//   4. Reject $HOME itself (covers "/" + forbidden-prefix misses too, but is
+//      called out separately for clarity in the error message).
+//   5. Unless allow_any_dir is set, require the path to be a git repo.
+fun validate_workspace(raw: Text, allow_any_dir: Bool): Text? {
+    const abs = abspath(raw)?
+    if abs == "/" {
+        echo_error("launch: refusing to mount filesystem root ('/') as workspace.")
+    }
+    for p in FORBIDDEN_PREFIXES {
+        if has_prefix(abs, p) {
+            echo_error("launch: refusing to mount system path '{abs}' under '{p}' as workspace.")
+        }
+    }
+    const home = home_dir()
+    if home != "" and abs == home {
+        echo_error("launch: refusing to mount $HOME as workspace.")
+    }
+    if not allow_any_dir and not is_git_repo(abs) {
+        echo_error("launch: '{abs}' is not a git repo. Pass --allow-any-dir to bypass this check.")
+    }
+    return abs
+}
+
+// ---------------------------------------------------------------------------
+// Security: hardening flags
+// ---------------------------------------------------------------------------
+
+// Return the hardening args shared by every backend, as a list of tokens.
+// Live as part of the podman command so users can audit them.
+fun security_base_args(): [Text] {
+    return [
+        "--read-only",
+        "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges",
+        "--user=1000",
+        // Idempotent temp dirs for Xvfb/x11vnc logs and i3 config.
+        "--tmpfs", "/tmp:size=256M",
+        "--tmpfs", "/home/user:size=1G",
+    ]
+}
+
+// Build the tail of the bind mounts. `workspace` is "" when no --workspace
+// was passed; otherwise it is an absolute host directory to mount rw at
+// /home/user/workspace.
+fun workspace_mount_arg(workspace: Text): [Text] {
+    if workspace == "" {
+        return []
+    }
+    return ["-v", "{workspace}:{WORKSPACE_DIR}:rw"]
+}
+
+// ---------------------------------------------------------------------------
+// Command visibility
+// ---------------------------------------------------------------------------
+
+// Echo a list of tokens (the full podman invocation) as a single shell-safe
+// line. Tokens are printed verbatim; no quoting is needed because amber's
+// translation emits each token as its own argv word, so the human-readable
+// line is a faithful copy of what will be executed.
+fun print_cmd(tokens: [Text]): Null {
+    let line = ""
+    for t in tokens {
+        if line == "" {
+            line = t
+        } else {
+            line = "{line} {t}"
+        }
+    }
+    echo("$ {line}")
+}
 
 // ---------------------------------------------------------------------------
 // Linux / Xephyr backend
@@ -71,10 +255,23 @@ fun cleanup_stale_display(): Null {
 
 fun xephyr_screen(resolution: Text, display: Text): Null? {
     $ Xephyr -br -ac -screen {resolution} {display} & $ ?
-    $ sleep 2 $ ?
+    // Poll for the unix socket (created once Xephyr binds RFB) before we hand
+    // off to podman -- otherwise i3 inside the container races and gets
+    // "Cannot open display" if we just sleep a fixed interval. 20s max.
+    let waited = 0
+    loop {
+        $ [ -S {XEPHYR_SOCKET} ] $ succeeded {
+            break
+        }
+        if waited >= 40 {
+            break
+        }
+        trust $ sleep 0.5 $
+        waited += 1
+    }
 }
 
-fun launch_xephyr(image: Text): Null? {
+fun launch_xephyr(image: Text, network: Text, workspace: Text): Null? {
     require_or_die("Xephyr")
     require_or_die("xdpyinfo")
     const resolution = compute_resolution()?
@@ -84,13 +281,37 @@ fun launch_xephyr(image: Text): Null? {
     echo("note: use <C-S> to grab mouse and keyboard")
     xephyr_screen(resolution, XEPHYR_DISPLAY)?
 
+    // Pre-build the security args + workspace mount so we can orchestrate
+    // ordering: tmpfs first (--tmpfs), then --security opts + bind mount
+    // overlay at /home/user/workspace. The visible command is the same shape
+    // podman will execute.
+    const sec = security_base_args()
+    const mount = workspace_mount_arg(workspace)
+    const cmd = [
+        "podman", "run", "--rm", "-it",
+        "--ipc=host",
+        "-e", "DISPLAY={XEPHYR_DISPLAY}",
+        "-e", "HOME=/home/user",
+        "-e", "LIBGL_ALWAYS_SOFTWARE=1",
+        "-v", "/tmp/.X11-unix:/tmp/.X11-unix",
+        "--network={network}",
+    ] + sec + mount + [image, "/usr/bin/i3"]
+    print_cmd(cmd)
+
     $ podman run --rm -it \
         --ipc=host \
         -e DISPLAY={XEPHYR_DISPLAY} \
         -e HOME=/home/user \
         -e LIBGL_ALWAYS_SOFTWARE=1 \
         -v /tmp/.X11-unix:/tmp/.X11-unix \
+        --network={network} \
+        --read-only \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
         --user=1000 \
+        --tmpfs /tmp:size=256M \
+        --tmpfs /home/user:size=1G \
+        {mount} \
         {image} /usr/bin/i3 $ ?
 
     trust pkill_glob("Xephyr.*{XEPHYR_DISPLAY}")
@@ -180,7 +401,7 @@ fun open_vnc_viewer(port: Int): Null {
 //
 // Container binds its rfbport to 5900; podman maps 127.0.0.1:<port> -> 5900 so
 // only the host's loopback can reach it (no -nopw risk on the network).
-fun launch_vnc(image: Text, geometry: Text, port: Int): Null? {
+fun launch_vnc(image: Text, geometry: Text, port: Int, network: Text, workspace: Text): Null? {
     echo("launch: starting VNC session ({geometry}) on port {port}...")
     echo("note: software rendering only (no GPU in the podman VM)")
 
@@ -192,6 +413,7 @@ fun launch_vnc(image: Text, geometry: Text, port: Int): Null? {
     const name = "copals-launch-window-{port}"
     trust $ podman rm -f {name} >/dev/null 2>&1 $
 
+    const mount = workspace_mount_arg(workspace)
     // Detached so we can poll the port and open the viewer before attaching.
     // The inner bash -c sequences Xvfb -> i3 -> x11vnc (foreground) and traps
     // termination to reap the background processes. No single quotes / $ used
@@ -200,13 +422,38 @@ fun launch_vnc(image: Text, geometry: Text, port: Int): Null? {
     // running the session under the image's default sh (dash) instead of bash
     // was implicated in TigerVNC "connection dropped before session established"
     // retry loops.
+    const inner_cmd = "rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; Xvfb {VNC_DISPLAY} -screen 0 {geometry} >/tmp/xvfb.log 2>&1 & sleep 1; DISPLAY={VNC_DISPLAY} xsetroot -solid grey 2>/dev/null || true; DISPLAY={VNC_DISPLAY} i3 >/tmp/i3.log 2>&1 & sleep 1; trap \"pkill Xvfb 2>/dev/null; pkill i3 2>/dev/null; pkill x11vnc 2>/dev/null\" EXIT INT TERM; DISPLAY={VNC_DISPLAY} exec x11vnc -display {VNC_DISPLAY} -forever -nopw -rfbport 5900 -fixscreen 5"
+
+    const sec = security_base_args()
+    const cmd = ["podman", "run", "-d", "--rm",
+        "--name", name,
+        "-p", "127.0.0.1:{port}:5900",
+        "-e", "DISPLAY={VNC_DISPLAY}",
+        "-e", "LIBGL_ALWAYS_SOFTWARE=1",
+        "-e", "HOME=/home/user",
+        "--network={network}",
+    ] + sec + mount + [
+        "--entrypoint", "/bin/bash",
+        image,
+        "-c",
+        inner_cmd,
+    ]
+    print_cmd(cmd)
+
     const cid = trust $ podman run -d --rm \
         --name {name} \
         -p 127.0.0.1:{port}:5900 \
         -e DISPLAY={VNC_DISPLAY} \
         -e LIBGL_ALWAYS_SOFTWARE=1 \
         -e HOME=/home/user \
+        --network={network} \
+        --read-only \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
         --user=1000 \
+        --tmpfs /tmp:size=256M \
+        --tmpfs /home/user:size=1G \
+        {mount} \
         --entrypoint /bin/bash \
         {image} \
         -c 'rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; Xvfb {VNC_DISPLAY} -screen 0 {geometry} >/tmp/xvfb.log 2>&1 & sleep 1; DISPLAY={VNC_DISPLAY} xsetroot -solid grey 2>/dev/null || true; DISPLAY={VNC_DISPLAY} i3 >/tmp/i3.log 2>&1 & sleep 1; trap "pkill Xvfb 2>/dev/null; pkill i3 2>/dev/null; pkill x11vnc 2>/dev/null" EXIT INT TERM; DISPLAY={VNC_DISPLAY} exec x11vnc -display {VNC_DISPLAY} -forever -nopw -rfbport 5900 -fixscreen 5' | tr -d '\n' $
@@ -272,11 +519,42 @@ fun first_positional(args: [Text]): Text {
 pub fun main_launch_window(args): Null? {
     //$ set -x $ ?
     if len(args) < 1 {
-        echo("Usage: launch_window.ab <image[:tag]> [--geometry WxHxD] [--port N]")
+        echo("Usage: launch_window.ab <image[:tag]> [--workspace <path>|-w <path>] [--network <mode>]")
+        echo("                            [--geometry WxHxD] [--port N] [--noselinux] [--allow-any-dir]")
         echo("Linux : Xephyr nested window (software rendering).")
         echo("macOS : VNC, connect via vnc://127.0.0.1:<port> (default 5900).")
+        echo("All invocations are sandboxed: read-only rootfs, --cap-drop ALL, no-new-privileges,")
+        echo("--user=1000, ephemeral /tmp and \$HOME. --workspace mounts one host dir rw at")
+        echo("/home/user/workspace (must be a git repo unless --allow-any-dir is given).")
+        echo("On Linux, SELinux is required unless --noselinux is passed.")
         fail 1
     }
+
+    // Parse security flags first so we fail fast on a non-sandboxed host
+    // before we attempt any side effects (port binding, Xephyr start etc.).
+    verify_safe(has_flag(args, "--noselinux"))
+
+    let workspace_raw = flag_value(args, "--workspace")
+    if workspace_raw == "" {
+        workspace_raw = flag_value(args, "-w")
+    }
+    let allow_any_dir = has_flag(args, "--allow-any-dir")
+    let workspace = ""
+    if workspace_raw != "" {
+        workspace = validate_workspace(workspace_raw, allow_any_dir)?
+    }
+
+    // Default to bridge (podman's default, ~sane host isolation). The user
+    // can tighten to "none" for fully offline sessions. We never default to
+    // "host" -- that's the whole point of the sandbox.
+    let network = flag_value(args, "--network")
+    if network == "" {
+        network = "bridge"
+    }
+    if network == "host" {
+        echo_error("launch: --network host is not allowed in sandboxed mode (use bridge or none).")
+    }
+
     const image = first_positional(args)
     if image == "" {
         echo_error("launch-window: no image specified")
@@ -292,9 +570,9 @@ pub fun main_launch_window(args): Null? {
             port_s = "{DEFAULT_VNC_PORT}"
         }
         const port = parse_int(port_s)?
-        launch_vnc(image, geometry, port)?
+        launch_vnc(image, geometry, port, network, workspace)?
     } else {
-        launch_xephyr(image)?
+        launch_xephyr(image, network, workspace)?
     }
 }
 
