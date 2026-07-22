@@ -186,7 +186,12 @@ fun validate_workspace(raw: Text, allow_any_dir: Bool): Text? {
 
 // Return the hardening args shared by every backend, as a list of tokens.
 // Live as part of the podman command so users can audit them.
-fun security_base_args(): [Text] {
+// When admin is true the args are omitted (old behaviour — writable rootfs,
+// root capabilities, setuid allowed, full root user, no tmpfs overlays).
+fun security_base_args(admin: Bool): [Text] {
+    if admin {
+        return []
+    }
     return [
         "--read-only",
         "--cap-drop", "ALL",
@@ -271,7 +276,7 @@ fun xephyr_screen(resolution: Text, display: Text): Null? {
     }
 }
 
-fun launch_xephyr(image: Text, network: Text, workspace: Text): Null? {
+fun launch_xephyr(image: Text, network: Text, workspace: Text, admin: Bool): Null? {
     require_or_die("Xephyr")
     require_or_die("xdpyinfo")
     const resolution = compute_resolution()?
@@ -285,7 +290,7 @@ fun launch_xephyr(image: Text, network: Text, workspace: Text): Null? {
     // ordering: tmpfs first (--tmpfs), then --security opts + bind mount
     // overlay at /home/user/workspace. The visible command is the same shape
     // podman will execute.
-    const sec = security_base_args()
+    const sec = security_base_args(admin)
     const mount = workspace_mount_arg(workspace)
     const cmd = [
         "podman", "run", "--rm", "-it",
@@ -298,6 +303,10 @@ fun launch_xephyr(image: Text, network: Text, workspace: Text): Null? {
     ] + sec + mount + [image, "/usr/bin/i3"]
     print_cmd(cmd)
 
+    // Build the podman invocation dynamically so we conditionally include
+    // security args (skipped in --admin mode).
+    const raw_mount = workspace_mount_arg(workspace)
+    const sec_raw = security_base_args(admin)
     $ podman run --rm -it \
         --ipc=host \
         -e DISPLAY={XEPHYR_DISPLAY} \
@@ -305,13 +314,8 @@ fun launch_xephyr(image: Text, network: Text, workspace: Text): Null? {
         -e LIBGL_ALWAYS_SOFTWARE=1 \
         -v /tmp/.X11-unix:/tmp/.X11-unix \
         --network={network} \
-        --read-only \
-        --cap-drop ALL \
-        --security-opt no-new-privileges \
-        --user=1000 \
-        --tmpfs /tmp:size=256M \
-        --tmpfs /home/user:size=1G \
-        {mount} \
+        {sec_raw} \
+        {raw_mount} \
         {image} /usr/bin/i3 $ ?
 
     trust pkill_glob("Xephyr.*{XEPHYR_DISPLAY}")
@@ -401,7 +405,7 @@ fun open_vnc_viewer(port: Int): Null {
 //
 // Container binds its rfbport to 5900; podman maps 127.0.0.1:<port> -> 5900 so
 // only the host's loopback can reach it (no -nopw risk on the network).
-fun launch_vnc(image: Text, geometry: Text, port: Int, network: Text, workspace: Text): Null? {
+fun launch_vnc(image: Text, geometry: Text, port: Int, network: Text, workspace: Text, admin: Bool): Null? {
     echo("launch: starting VNC session ({geometry}) on port {port}...")
     echo("note: software rendering only (no GPU in the podman VM)")
 
@@ -414,6 +418,7 @@ fun launch_vnc(image: Text, geometry: Text, port: Int, network: Text, workspace:
     trust $ podman rm -f {name} >/dev/null 2>&1 $
 
     const mount = workspace_mount_arg(workspace)
+    const sec = security_base_args(admin)
     // Detached so we can poll the port and open the viewer before attaching.
     // The inner bash -c sequences Xvfb -> i3 -> x11vnc (foreground) and traps
     // termination to reap the background processes. No single quotes / $ used
@@ -422,9 +427,6 @@ fun launch_vnc(image: Text, geometry: Text, port: Int, network: Text, workspace:
     // running the session under the image's default sh (dash) instead of bash
     // was implicated in TigerVNC "connection dropped before session established"
     // retry loops.
-    const inner_cmd = "rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; Xvfb {VNC_DISPLAY} -screen 0 {geometry} >/tmp/xvfb.log 2>&1 & sleep 1; DISPLAY={VNC_DISPLAY} xsetroot -solid grey 2>/dev/null || true; DISPLAY={VNC_DISPLAY} i3 >/tmp/i3.log 2>&1 & sleep 1; trap \"pkill Xvfb 2>/dev/null; pkill i3 2>/dev/null; pkill x11vnc 2>/dev/null\" EXIT INT TERM; DISPLAY={VNC_DISPLAY} exec x11vnc -display {VNC_DISPLAY} -forever -nopw -rfbport 5900 -fixscreen 5"
-
-    const sec = security_base_args()
     const cmd = ["podman", "run", "-d", "--rm",
         "--name", name,
         "-p", "127.0.0.1:{port}:5900",
@@ -436,7 +438,7 @@ fun launch_vnc(image: Text, geometry: Text, port: Int, network: Text, workspace:
         "--entrypoint", "/bin/bash",
         image,
         "-c",
-        inner_cmd,
+        "rm -f /tmp/.X0-lock /tmp/.X11-unix/X0; Xvfb {VNC_DISPLAY} -screen 0 {geometry} >/tmp/xvfb.log 2>&1 & sleep 1; DISPLAY={VNC_DISPLAY} xsetroot -solid grey 2>/dev/null || true; DISPLAY={VNC_DISPLAY} i3 >/tmp/i3.log 2>&1 & sleep 1; trap \"pkill Xvfb 2>/dev/null; pkill i3 2>/dev/null; pkill x11vnc 2>/dev/null\" EXIT INT TERM; DISPLAY={VNC_DISPLAY} exec x11vnc -display {VNC_DISPLAY} -forever -nopw -rfbport 5900 -fixscreen 5",
     ]
     print_cmd(cmd)
 
@@ -447,12 +449,7 @@ fun launch_vnc(image: Text, geometry: Text, port: Int, network: Text, workspace:
         -e LIBGL_ALWAYS_SOFTWARE=1 \
         -e HOME=/home/user \
         --network={network} \
-        --read-only \
-        --cap-drop ALL \
-        --security-opt no-new-privileges \
-        --user=1000 \
-        --tmpfs /tmp:size=256M \
-        --tmpfs /home/user:size=1G \
+        {sec} \
         {mount} \
         --entrypoint /bin/bash \
         {image} \
@@ -521,18 +518,28 @@ pub fun main_launch_window(args): Null? {
     if len(args) < 1 {
         echo("Usage: launch_window.ab <image[:tag]> [--workspace <path>|-w <path>] [--network <mode>]")
         echo("                            [--geometry WxHxD] [--port N] [--noselinux] [--allow-any-dir]")
+        echo("                            [--admin]")
         echo("Linux : Xephyr nested window (software rendering).")
         echo("macOS : VNC, connect via vnc://127.0.0.1:<port> (default 5900).")
         echo("All invocations are sandboxed: read-only rootfs, --cap-drop ALL, no-new-privileges,")
         echo("--user=1000, ephemeral /tmp and \$HOME. --workspace mounts one host dir rw at")
         echo("/home/user/workspace (must be a git repo unless --allow-any-dir is given).")
         echo("On Linux, SELinux is required unless --noselinux is passed.")
+        echo("Pass --admin to disable all hardening (writable rootfs, root user, full caps, no tmpfs,")
+        echo("no SELinux check, --network host allowed). Use this to install packages inside the session.")
         fail 1
     }
 
+    const admin = has_flag(args, "--admin")
+
     // Parse security flags first so we fail fast on a non-sandboxed host
     // before we attempt any side effects (port binding, Xephyr start etc.).
-    verify_safe(has_flag(args, "--noselinux"))
+    // --admin skips the SELinux gate (user has acknowledged the risk).
+    if not admin {
+        verify_safe(has_flag(args, "--noselinux"))
+    } else {
+        echo_warning("launch: --admin mode — no SELinux check, no container hardening.")
+    }
 
     let workspace_raw = flag_value(args, "--workspace")
     if workspace_raw == "" {
@@ -545,13 +552,13 @@ pub fun main_launch_window(args): Null? {
     }
 
     // Default to bridge (podman's default, ~sane host isolation). The user
-    // can tighten to "none" for fully offline sessions. We never default to
-    // "host" -- that's the whole point of the sandbox.
+    // can tighten to "none" for fully offline sessions. We reject "host" in
+    // sandboxed mode but allow it under --admin.
     let network = flag_value(args, "--network")
     if network == "" {
         network = "bridge"
     }
-    if network == "host" {
+    if network == "host" and not admin {
         echo_error("launch: --network host is not allowed in sandboxed mode (use bridge or none).")
     }
 
@@ -570,9 +577,9 @@ pub fun main_launch_window(args): Null? {
             port_s = "{DEFAULT_VNC_PORT}"
         }
         const port = parse_int(port_s)?
-        launch_vnc(image, geometry, port, network, workspace)?
+        launch_vnc(image, geometry, port, network, workspace, admin)?
     } else {
-        launch_xephyr(image, network, workspace)?
+        launch_xephyr(image, network, workspace, admin)?
     }
 }
 
