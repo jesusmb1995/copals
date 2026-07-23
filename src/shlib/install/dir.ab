@@ -4,15 +4,14 @@ import { home } from "../env.ab"
 import { prompt_user } from "../install/ask.ab"
 
 pub fun dir_create_at_home(rel: Text): Null? {
-    if not prompt_user("create directory ~/{rel}") {
-        return null
-    }
     const h = home()?
     dir_create("{h}/{rel}")?
 }
 
 pub fun dir_create_at_home_or_die(rel: Text): Null {
-    dir_create_at_home(rel) failed {
-        echo_error("failed to create directory at home/{rel}")
+    if prompt_user("create directory ~/{rel}") {
+        dir_create_at_home(rel) failed {
+            echo_error("failed to create directory at home/{rel}")
+        }
     }
 }

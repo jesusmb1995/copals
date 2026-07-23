@@ -4,15 +4,14 @@ import { home } from "../env.ab"
 import { prompt_user } from "../install/ask.ab"
 
 pub fun execute_sh_at_home(rel_sh_path): Null? {
-    if not prompt_user("execute ~/{rel_sh_path}") {
-        return null
-    }
     const h = home()?;
     execute_sh("{h}/{rel_sh_path}")?
 }
 
 pub fun execute_sh_at_home_or_die(rel_sh_path: Text) {
-    execute_sh_at_home(rel_sh_path) failed {
-        echo_error("failed to run {rel_sh_path}")
+    if prompt_user("execute ~/{rel_sh_path}") {
+        execute_sh_at_home(rel_sh_path) failed {
+            echo_error("failed to run {rel_sh_path}")
+        }
     }
 }

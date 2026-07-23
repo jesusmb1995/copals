@@ -12,9 +12,6 @@ pub fun cp_or_die(src: Text, dest: Text): Null {
 }
 
 pub fun copy_into_home(src: Text, rel_dest: Text): Text? {
-    if not prompt_user("cp into home: {rel_dest}") {
-        return null
-    }
     const home = home()?
     const dest = "{home}/{rel_dest}"
     dir_create(dest)?
@@ -23,6 +20,9 @@ pub fun copy_into_home(src: Text, rel_dest: Text): Text? {
 }
 
 pub fun copy_into_home_or_die(src: Text, rel_dest: Text): Text {
+    if not prompt_user("cp into home: {rel_dest}") {
+        return ""
+    }
     const dest = copy_into_home(src, rel_dest) failed {
         echo_error("deploy of {rel_dest} into home failed")
     }
