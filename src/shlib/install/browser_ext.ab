@@ -24,11 +24,11 @@ pub fun install_chrome_extension(url: Text): Null? {
     if has_cmd("sudo") {
         $ sudo mkdir -p {dir} $ ?
         $ sudo chmod 755 /etc/opt/chrome $ ?
-        $ sudo sh -c "printf '\x7b\"ExtensionInstallForcelist\":[\"%s;https://clients2.google.com/service/update2/crx\"]\x7d\n' {id} > {dir}/vimium.json" $ ?
+        $ sudo sh -c "printf '\{\"ExtensionInstallForcelist\":[\"%s;https://clients2.google.com/service/update2/crx\"]}\n' {id} > {dir}/vimium.json" $ ?
     } else {
         $ mkdir -p {dir} $ ?
         $ chmod 755 /etc/opt/chrome $ ?
-        $ printf '\x7b"ExtensionInstallForcelist":["%s;https://clients2.google.com/service/update2/crx"]\x7d\n' {id} > {dir}/vimium.json $ ?
+        $ printf '\{"ExtensionInstallForcelist":["%s;https://clients2.google.com/service/update2/crx"]}\n' {id} > {dir}/vimium.json $ ?
     }
 }
 
