@@ -5,6 +5,7 @@ import { home } from "../env.ab"
 import { temp_file_create } from "../temp.ab"
 import { has_cmd } from "../cmd.ab"
 import { install_via_curl } from "./curl.ab"
+import { prompt_user } from "../install/ask.ab"
 
 // Source brew's shellenv so `brew` is on PATH after a same-session install.
 fun brew_on_path(): Null? {
@@ -64,6 +65,9 @@ fun fix_lock_dir(): Null? {
 }
 
 pub fun brew_install(packages: [Text]): Null? {
+    if not prompt_user("brew install: {packages}") {
+        return null
+    }
     brew_on_path() failed {
         install_via_curl("https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh")?
         brew_on_path()?

@@ -1,6 +1,7 @@
 import { echo_error } from "std/env"
 import { join } from "std/text"
 import { sudo_cmd } from "../sudo.ab"
+import { prompt_user } from "../install/ask.ab"
 
 let was_updated = false 
 fun update(): Null? {
@@ -14,6 +15,9 @@ fun ensure_updated(): Null? {
 }
 
 pub fun apt_install(packages: [Text]): Null? {
+    if not prompt_user("apt install: {packages}") {
+        return null
+    }
     ensure_updated()?
     const pkgs = join(packages, " ")
     sudo_cmd("apt-get install -y --no-install-recommends {pkgs}", ["DEBIAN_FRONTEND=noninteractive"])?

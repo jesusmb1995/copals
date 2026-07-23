@@ -1,14 +1,20 @@
 import { home } from "../env.ab"
 import { dir_create } from "std/fs"
 import { echo_error, echo_success } from "std/env"
+import { prompt_user } from "../install/ask.ab"
 
 pub fun cp_or_die(src: Text, dest: Text): Null {
-    cp(src, dest) failed {
-        echo_error("deploy of {src} into {dest} failed")
+    if prompt_user("cp {src} -> {dest}") {
+        cp(src, dest) failed {
+            echo_error("deploy of {src} into {dest} failed")
+        }
     }
 }
 
 pub fun copy_into_home(src: Text, rel_dest: Text): Text? {
+    if not prompt_user("cp into home: {rel_dest}") {
+        return null
+    }
     const home = home()?
     const dest = "{home}/{rel_dest}"
     dir_create(dest)?

@@ -2,8 +2,12 @@ import { echo_error } from "std/env"
 import { dir_create } from "std/fs"
 import { home } from "../env.ab"
 import { rsync } from "../rsync.ab"
+import { prompt_user } from "../install/ask.ab"
 
 pub fun rsync_into_home(src: Text, rel_target: Text, delete: Bool = false): Null? {
+    if not prompt_user("rsync {src} -> ~/{rel_target}") {
+        return null
+    }
     const excludes = []
     const h = home()?
     const target = "{h}/{rel_target}"

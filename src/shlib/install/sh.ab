@@ -1,8 +1,12 @@
 import { echo_error } from "std/env"
 import { execute_sh } from "../sh.ab"
 import { home } from "../env.ab"
+import { prompt_user } from "../install/ask.ab"
 
 pub fun execute_sh_at_home(rel_sh_path): Null? {
+    if not prompt_user("execute ~/{rel_sh_path}") {
+        return null
+    }
     const h = home()?;
     execute_sh("{h}/{rel_sh_path}")?
 }

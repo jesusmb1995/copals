@@ -1,8 +1,12 @@
 import { dir_create } from "std/fs"
 import { echo_error } from "std/env"
 import { home } from "../env.ab"
+import { prompt_user } from "../install/ask.ab"
 
 pub fun dir_create_at_home(rel: Text): Null? {
+    if not prompt_user("create directory ~/{rel}") {
+        return null
+    }
     const h = home()?
     dir_create("{h}/{rel}")?
 }

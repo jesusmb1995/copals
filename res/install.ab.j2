@@ -21,10 +21,14 @@ const AVAILABLE_STEPS = [
 ]
 
 fun print_help() {
-    echo("Usage: ./install.sh [step ...]")
+    echo("Usage: ./install.sh [--ask] [--trace] [step ...]")
     echo("")
     echo("Install all steps by default. Pass one or more step names to run")
     echo("only those steps. Use 'help' to print this message.")
+    echo("")
+    echo("Flags:")
+    echo("  --ask     Prompt before each install action (apt, brew, cp, symlink, etc.)")
+    echo("  --trace   Enable shell debug output (set -x)")
     echo("")
     echo("Available steps:")
 {% for repo in repositories %}
@@ -150,16 +154,28 @@ fun cmd_update(): Null? {
 
 main(raw_args) {
     const args = raw_args[1..len(raw_args)]
-    if len(args) == 0 {
+    let step_args = []
+    for a in args {
+        if a == "--ask" {
+            trust $ export COPALS_ASK=1 $
+        }
+        if a == "--trace" {
+            trust $ set -x $
+        }
+        if a != "--ask" and a != "--trace" {
+            step_args += [a]
+        }
+    }
+    if len(step_args) == 0 {
 {% for repo in repositories %}
 {% if repo.enabled %}
         install_{{ repo.id }}()
 {% endif %}
 {% endfor %}
-    } if len(args) == 1 and args[0] == "update" {
+    } if len(step_args) == 1 and step_args[0] == "update" {
         cmd_update()?
-    } if len(args) > 1 {
-        for step in args {
+    } if len(step_args) > 1 {
+        for step in step_args {
             run_step(step)
         }
     }

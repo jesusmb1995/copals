@@ -2,6 +2,7 @@ import { home } from "../env.ab"
 import { dir_create, file_exists } from "std/fs"
 import { echo_error, echo_success } from "std/env"
 import { symlink_create_dir } from "../symlink.ab"
+import { prompt_user } from "../install/ask.ab"
 
 fun _parent_dir(path: Text): Text? {
     const parent = $ dirname {path} $?
@@ -9,6 +10,9 @@ fun _parent_dir(path: Text): Text? {
 }
 
 pub fun symlink_into_home(src: Text, rel_dest: Text): Text? {
+    if not prompt_user("symlink {src} -> ~/{rel_dest}") {
+        return null
+    }
     const home = home()?
     const dest = "{home}/{rel_dest}"
 
@@ -32,6 +36,9 @@ pub fun symlink_into_home_or_die(src: Text, rel_dest: Text): Text {
 // against home()). Works for files (e.g. bridging a data file from one config
 // location to the path a plugin expects).
 fun symlink_at_home(src_rel: Text, dest_rel: Text): Text? {
+    if not prompt_user("symlink ~/{src_rel} -> ~/{dest_rel}") {
+        return null
+    }
     const h = home()?
     const src = "{h}/{src_rel}"
     const dest = "{h}/{dest_rel}"
