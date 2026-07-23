@@ -162,8 +162,10 @@ main(raw_args) {
         if a == "--trace" {
             trust $ set -x $
         }
-        if a != "--ask" and a != "--trace" {
-            step_args += [a]
+        if a != "--ask" {
+            if a != "--trace" {
+                step_args += [a]
+            }
         }
     }
     if len(step_args) == 0 {
@@ -172,11 +174,16 @@ main(raw_args) {
         install_{{ repo.id }}()
 {% endif %}
 {% endfor %}
-    } if len(step_args) == 1 and step_args[0] == "update" {
-        cmd_update()?
-    } if len(step_args) >= 1 and step_args[0] != "update" {
-        for step in step_args {
-            run_step(step)
+    }
+    if len(step_args) >= 1 {
+        if step_args[0] == "update" {
+            if len(step_args) == 1 {
+                cmd_update()?
+            }
+        } else {
+            for step in step_args {
+                run_step(step)
+            }
         }
     }
 }
