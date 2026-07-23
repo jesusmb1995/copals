@@ -1,6 +1,8 @@
 import { replace_regex } from "std/text"
 import { url_status } from "../fetch.ab"
 import { echo_error } from "std/env"
+import { prompt_user } from "../install/ask.ab"
+import { has_cmd } from "../cmd.ab"
 
 fun extract_extension_id(url: Text): Text {
     if replace_regex(url, "^https?://[^/]+/.+/([^/]+)$", "", true) == url {
@@ -10,15 +12,24 @@ fun extract_extension_id(url: Text): Text {
 }
 
 pub fun install_chrome_extension(url: Text): Null? {
+    if not prompt_user("install chrome extension from {url}") {
+        return null
+    }
     const id = extract_extension_id(url)
     const http_code = url_status(url)?
     if http_code != "200" {
         echo_error("extension url returned HTTP {http_code} (expected 200): {url}")
     }
     const dir = "/etc/opt/chrome/policies/managed"
-    $ mkdir -p {dir} $ ?
-    $ chmod 755 /etc/opt/chrome $ ?
-    $ printf '\{"ExtensionInstallForcelist":["%s;https://clients2.google.com/service/update2/crx"]}\n' {id} > {dir}/vimium.json $ ?
+    if has_cmd("sudo") {
+        $ sudo mkdir -p {dir} $ ?
+        $ sudo chmod 755 /etc/opt/chrome $ ?
+        $ sudo sh -c "printf '\x7b\"ExtensionInstallForcelist\":[\"%s;https://clients2.google.com/service/update2/crx\"]\x7d\n' {id} > {dir}/vimium.json" $ ?
+    } else {
+        $ mkdir -p {dir} $ ?
+        $ chmod 755 /etc/opt/chrome $ ?
+        $ printf '\x7b"ExtensionInstallForcelist":["%s;https://clients2.google.com/service/update2/crx"]\x7d\n' {id} > {dir}/vimium.json $ ?
+    }
 }
 
 pub fun install_chrome_extension_or_die(url: Text) {

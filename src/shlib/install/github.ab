@@ -2,6 +2,8 @@ import { echo_error } from "std/env"
 import { temp_dir_create } from "std/fs"
 import { download_tmp } from "../fetch.ab"
 import { install_deb } from "./deb.ab"
+import { prompt_user } from "../install/ask.ab"
+import { sudo_cmd } from "../sudo.ab"
 import { JQ } from "../vendor.ab"
 
 fun tag_verified(repo: Text, tag: Text): Bool? {
@@ -47,13 +49,15 @@ pub fun install_github_binary(repo: Text, asset_suffix: Text, binary_name: Text,
     const tarball = download_tmp(url)?
     const tmp = temp_dir_create("gh-bin-XXXXXX")?
     $ tar -xzf {tarball} -C {tmp} $ ?
-    $ install -m755 {tmp}/{binary_name} {install_dir} $ failed {
-        $ install -m755 {tmp}/*/{binary_name} {install_dir} $ ?
+    sudo_cmd("install -m755 {tmp}/{binary_name} {install_dir}", []) failed {
+        sudo_cmd("install -m755 {tmp}/*/{binary_name} {install_dir}", [])?
     }
 }
 
 pub fun install_github_binary_or_die(repo: Text, asset_suffix: Text, binary_name: Text, install_dir: Text = "/usr/local/bin") {
-    install_github_binary(repo, asset_suffix, binary_name, install_dir) failed {
-        echo_error("failed to install {binary_name} from {repo}")
+    if prompt_user("install {binary_name} from {repo} -> {install_dir}") {
+        install_github_binary(repo, asset_suffix, binary_name, install_dir) failed {
+            echo_error("failed to install {binary_name} from {repo}")
+        }
     }
 }
