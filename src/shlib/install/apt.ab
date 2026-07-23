@@ -1,4 +1,4 @@
-import { echo_error } from "std/env"
+import { echo_error, echo_warning } from "std/env"
 import { join } from "std/text"
 import { sudo_cmd } from "../sudo.ab"
 import { prompt_user } from "../install/ask.ab"
@@ -32,7 +32,7 @@ pub fun apt_install_or_die(packages: [Text]) {
 
 pub fun apt_install_if_missing_or_die(cmd: Text, pkg: Text) {
     if has_cmd(cmd) {
-        echo_error("{cmd} already installed, skipping apt install")
+        echo_warning("{cmd} already installed, skipping apt install")
     } else {
         apt_install_or_die([pkg])
     }
