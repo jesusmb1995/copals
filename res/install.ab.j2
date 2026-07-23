@@ -138,7 +138,7 @@ fun cmd_update(): Null? {
     }
 
     echo("Apply updates? [Y/n]")
-    const ans = $ dd bs=1 count=100 status=none < /dev/tty 2>/dev/null | tr -d '\n' $ ?
+    const ans = $ read -r line < /dev/tty 2>/dev/null; printf "%s" "\$line" $ ?
     if ans == "n" or ans == "N" or ans == "no" or ans == "NO" {
         echo("update: aborted")
         return null
@@ -174,7 +174,7 @@ main(raw_args) {
 {% endfor %}
     } if len(step_args) == 1 and step_args[0] == "update" {
         cmd_update()?
-    } if len(step_args) > 1 {
+    } if len(step_args) >= 1 and step_args[0] != "update" {
         for step in step_args {
             run_step(step)
         }

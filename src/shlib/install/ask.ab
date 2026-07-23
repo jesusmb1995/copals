@@ -5,10 +5,10 @@ pub fun prompt_user(description: Text): Bool {
     if ask == "" { return true }
     echo("install: {description}")
     trust $ printf "Proceed? [Y/n] " >&2 $
-    const ans = $ dd bs=1 count=100 status=none < /dev/tty 2>/dev/null | tr -d '\n' $ failed {
+    const ans = $ read -r line < /dev/tty 2>/dev/null; printf "%s" "\$line" $ failed {
         trust $ printf "\n" >&2 $; return true
     }
-    echo("")
+    if ans == "" { return true }
     if ans == "n" or ans == "N" or ans == "no" or ans == "NO" or ans == "No" {
         echo("skipping")
         return false
