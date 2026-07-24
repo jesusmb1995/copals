@@ -12,6 +12,7 @@ permissions:
 jobs:
   pr-test:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.full_name == github.repository
     env:
       REGISTRY: ghcr.io
       IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/copals
@@ -20,6 +21,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Check authorization
+        env:
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/workflows/step/step-check-authorization.sh
+
+      - name: Invalidate stale test-image labels on new commits
+        if: ${{ github.event.action == 'synchronize' }}
+        env:
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+          API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_PATH: ${{ github.event_path }}
+          LABEL_PREFIX: "test-image:"
+        run: .github/workflows/step/step-invalidate-labels.sh
 
       - id: image
         env:

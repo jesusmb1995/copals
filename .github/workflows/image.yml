@@ -29,6 +29,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check authorization
+        env:
+          ACTOR: ${{ github.actor }}
+          REPO: ${{ github.repository }}
+          API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/workflows/step/step-check-authorization.sh
+
       - name: Read version
         id: version
         run: OUTPUT_PATH="$GITHUB_OUTPUT" .github/workflows/step/step-version.sh

@@ -112,6 +112,10 @@ run_container() {
 # populated (they live only in the image at /usr/lib/copals/vendor). The
 # installed tree is always self-contained, so it wins when present.
 get_lib_dir() {
+    if [ -n "${COPALS_LIB_DIR:-}" ]; then
+        printf '%s' "$COPALS_LIB_DIR"
+        return 0
+    fi
     if [ -f /usr/lib/copals/src/copals.ab ] && [ -d /usr/lib/copals/vendor ]; then
         printf '%s' /usr/lib/copals
         return 0

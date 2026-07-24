@@ -35,6 +35,8 @@ pub fun git_add(repo: Text, file: Text): Null? {
 }
 
 pub fun git_commit(repo: Text, message: Text): Null? {
+    $ git -C "{repo}" config user.email "test@example.com" $ failed {}
+    $ git -C "{repo}" config user.name "Test User" $ failed {}
     $ git -C "{repo}" commit -m "{message}" $ ?
 }
 
