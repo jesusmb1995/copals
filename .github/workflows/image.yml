@@ -1,0 +1,73 @@
+name: Build and push copals image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'VERSION'
+      - 'Dockerfile'
+      - '.github/workflows/**'
+      - 'src/**'
+      - 'res/**'
+      - 'scripts/**'
+      - 'install.sh'
+      - 'dependencies.sh'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/copals
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        run: OUTPUT_PATH="$GITHUB_OUTPUT" .github/workflows/step/step-version.sh
+
+      - name: Build and test copals-with-podman
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_TAG: copals-podman:test
+          WORKSPACE: ${{ github.workspace }}
+        run: .github/workflows/step/step-build-podman.sh
+
+      - name: Build and test copals-without-podman
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_TAG: copals-no-podman:test
+          WORKSPACE: ${{ github.workspace }}
+        run: .github/workflows/step/step-build-no-podman.sh
+
+      - name: Login to GHCR
+        if: success()
+        env:
+          REGISTRY: ghcr.io
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/workflows/step/step-login-ghcr.sh
+
+      - name: Push images
+        if: success()
+        env:
+          IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/copals
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE_TAG: copals-podman:test
+          NO_PODMAN_IMAGE_TAG: copals-no-podman:test
+        run: .github/workflows/step/step-push-images.sh
+
+      - name: Create and push tag
+        if: success()
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GIT_USER_NAME: github-actions[bot]
+          GIT_USER_EMAIL: github-actions[bot]@users.noreply.github.com
+        run: .github/workflows/step/step-create-tag.sh

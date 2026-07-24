@@ -1,0 +1,58 @@
+name: PR test copals image
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  packages: read
+  issues: write
+
+jobs:
+  pr-test:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_BASE: ghcr.io/${{ github.repository_owner }}/copals
+      DEFAULT_VERSION: latest
+      LABEL_PREFIX: "test-image:"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: image
+        env:
+          EVENT_PATH: ${{ github.event_path }}
+        run: OUTPUT_PATH="$GITHUB_OUTPUT" .github/workflows/step/step-read-label.sh
+
+      - name: Login to GHCR
+        env:
+          REGISTRY: ghcr.io
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/workflows/step/step-login-ghcr.sh
+
+      - id: image-ref
+        env:
+          VERSION: ${{ steps.image.outputs.version }}
+          SOURCE_IMAGE_TAG: copals:source
+        run: OUTPUT_PATH="$GITHUB_OUTPUT" .github/workflows/step/step-image-ref.sh
+
+      - name: Run tests
+        env:
+          IMAGE_REF: ${{ steps.image-ref.outputs.ref }}
+          WORKSPACE: ${{ github.workspace }}
+        run: .github/workflows/step/step-run-tests.sh
+
+      - name: Post result to PR
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          VERSION: ${{ steps.image.outputs.version }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          ISSUE_NUMBER: ${{ github.event.number }}
+          SHA: ${{ github.sha }}
+          API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: .github/workflows/step/step-post-result.sh
