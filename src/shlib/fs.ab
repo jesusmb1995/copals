@@ -7,6 +7,10 @@ pub fun filename(path: Text): Text {
     return replace_regex(path, "^.*/", "")
 }
 
+pub fun dirname(path: Text): Text? {
+    return $ dirname {path} $ ?
+}
+
 pub fun file_ext(path: Text): Text? {
     return $ echo "{path}" | cut -d. -f2- $ ?
 }

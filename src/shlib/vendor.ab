@@ -1,6 +1,15 @@
 import { dir_exists, file_exists } from "std/fs"
+import { replace_regex } from "std/text"
 
-const PROJECT_ROOT = pwd()
+fun _project_root(): Text {
+    if file_exists("src/copals.ab") {
+        const pwd_val = pwd()
+        return replace_regex(pwd_val, "/[^/]+$", "", true)
+    }
+    return pwd()
+}
+
+const PROJECT_ROOT = _project_root()
 const project_vendor = "{PROJECT_ROOT}/copals/vendor"
 const installed_vendor = "/usr/lib/copals/vendor"
 
