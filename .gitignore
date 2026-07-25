@@ -6,3 +6,4 @@ vendor/bashunit_installer/lib
 src/container/launch_window.sh
 src/gen/postprocess.sh
 src/copals.sh
+!src/fetch_user_repos.sh
