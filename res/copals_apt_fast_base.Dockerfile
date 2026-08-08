@@ -8,13 +8,16 @@ FROM ${BASE} AS copals-apt-fast-base
 RUN echo "deb http://snapshot.debian.org/archive/debian/20260704T120000Z testing main" > /etc/apt/sources.list
 RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot-valid-until
 
-# ---BEGIN aria2 install (arch-agnostic; was hardcoded amd64 debs)---
-# Installs aria2 from the pinned snapshot sources using the native arch so the
-# base builds on both amd64 and arm64 hosts.
+# ---BEGIN aria2 + ca-certificates (base TLS trust store) install---
+# aria2: native arch so the base builds on amd64 and arm64 hosts.
+# ca-certificates: its postinst runs update-ca-certificates, populating
+# /etc/ssl/certs/ca-certificates.crt so every downstream repo/layer can do TLS
+# (e.g. curl/github-binary installs in system_tools). Load-bearing — do not drop:
+# without it curl fails with "(77) error adding trust anchors".
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends aria2
-# ---END aria2 deps---
+    apt-get update && apt-get install -y --no-install-recommends aria2 ca-certificates
+# ---END aria2 + ca-certificates deps---
 
 RUN rm -f /tmp/*.db
 
