@@ -81,6 +81,91 @@ During generation each repository is content-hashed (SHA256 of directory + `impl
 - `install.sh local [prefix]` — installs to `<prefix>/lib/copals/` and `<prefix>/bin/copals`. Default prefix: `/usr`.
 - `install.sh podman [args...]` — builds `copals:dev` container image.
 
+These modes are for the **copals tool's own** `copals/install.sh`. The section
+below covers the **generated bundle's** `install.sh`, which is a different
+script produced from `copals/res/install.ab.j2` and shipped inside each bundle.
+
+## Interactive Bundle Install (`--ask`)
+
+A generated bundle's `install.sh` installs every repo step by default. Pass
+`--ask` to review and approve each action interactively:
+
+```
+./install.sh --ask
+```
+
+For each install action it prints a description and prompts:
+
+```
+install: apt install: [git, curl]
+Proceed? [Y/n]
+```
+
+Answering `n` (or `N`/`no`/`NO`/`No`) **skips** that action and continues to the
+next one — it never fails the install. Any other answer (empty = Enter, or `y`)
+runs the action. Default is **yes**.
+
+### How it works
+
+`--ask` only sets the `COPALS_ASK=1` environment variable. The actual prompting
+lives in one place — `shlib/install/ask.ab` (`prompt_user`) — which every
+shlib install helper calls before doing work:
+
+- `COPALS_ASK` **unset or empty** (no `--ask`) → actions run unattended, no
+  prompt. This is the default fast path.
+- `COPALS_ASK` **non-empty** (`--ask`) → each action prompts as shown above.
+
+You can set `COPALS_ASK` yourself to the same effect (any non-empty value):
+`COPALS_ASK=1 ./install.sh`.
+
+### Actions that prompt
+
+`--ask` only affects actions routed through the shlib helpers (each is gated by
+a `prompt_user(...)` call):
+
+| Helper | Prompt |
+|---|---|
+| `apt_install_or_die` | `apt install: [pkgs]` |
+| `brew_install_or_die` | `brew install: [pkgs]` |
+| `cp_or_die` / `copy_into_home_or_die` | `cp {src} -> {dest}` |
+| `symlink_into_home_or_die` / `symlink_at_home_or_die` | `symlink {src} -> ~/{rel}` |
+| `rsync_or_die_into_home` / `rsync_or_die_opts*` | `rsync {src} -> ~/{rel}` |
+| `execute_sh_at_home_or_die` | `execute ~/{rel}` |
+| `dir_create_at_home_or_die` | `create directory ~/{rel}` |
+| `install_github_binary_or_die` | `install {bin} from {repo} -> {dir}` |
+| `install_chrome_extension` | `install chrome extension from {url}` |
+
+Raw shell calls in a hook (e.g. direct `sudo apt-get ...`, `git clone`,
+`curl | bash`) **bypass** `--ask` entirely — there is no central interception.
+To be ask-aware, a hook must use the helpers above.
+
+### Single-step and flag combination
+
+`--ask` is independent of step selection; order does not matter. All of these
+prompt only within the named step(s) and run nothing else:
+
+```
+./install.sh --ask nvim
+./install.sh nvim --ask
+./install.sh --ask --trace nvim apt_essential_tools
+```
+
+Run `./install.sh help` to list available steps for a given bundle.
+
+### Non-interactive / CI safety
+
+`prompt_user` reads the answer from `/dev/tty` directly (not stdin), so it still
+prompts when the bundle is driven by a piped script. If `/dev/tty` cannot be
+read (no controlling terminal — e.g. CI, piped stdin), it auto-proceeds
+(answers **yes**) rather than hanging. So `--ask` is safe in automated
+environments and never blocks.
+
+### `update` subcommand ignores `--ask`
+
+`./install.sh update` (the diff-changed-repos-and-reinstall flow) has its own
+hardcoded `Apply updates? [Y/n]` prompt and does **not** consult `COPALS_ASK`.
+`--ask` therefore has no effect on the `update` subcommand.
+
 ## Container Launch
 
 `container launch-window <image[:tag]>` launches i3 inside the container and
