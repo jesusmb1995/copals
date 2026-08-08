@@ -26,7 +26,7 @@ const MAX_JOBS = 8
 
 // collect_flag_pairs: scan args for each occurrence of `flag` followed by a
 // value token; return the list of values (supports multiple repeats).
-fun collect_flag_pairs(args: [Text], flag: Text): [Text] {
+pub fun collect_flag_pairs(args: [Text], flag: Text): [Text] {
     let values = []
     let i = 0
     while i < len(args) {

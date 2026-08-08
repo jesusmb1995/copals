@@ -1,5 +1,5 @@
 import { has_flag } from "shlib/flag.ab"
-import { main_generate } from "gen/generate.ab"
+import { main_generate, collect_flag_pairs } from "gen/generate.ab"
 import { main_container } from "container/container.ab"
 import { echo_success, echo_error } from "std/env"
 
@@ -20,6 +20,15 @@ pub fun pipeline_main(args: [Text]): Null? {
     }
     if has_flag(args, "--try-prune-fetch-and-urls") {
         gen_args += ["--try-prune-fetch-and-urls"]
+    }
+    if has_flag(args, "--audit") {
+        gen_args += ["--audit"]
+    }
+    for pair in collect_flag_pairs(args, "--tla") {
+        gen_args += ["--tla", pair]
+    }
+    for pair in collect_flag_pairs(args, "--tla-str") {
+        gen_args += ["--tla-str", pair]
     }
 
     let build_args = ["build", bundle_dir]
