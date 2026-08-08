@@ -62,6 +62,22 @@ pub fun rm_if_feature_not_or_die(config_file: Text, base_path: Text, feature: Te
     }
 }
 
+// Inverse of rm_if_feature_not: remove rel_path when features[feature] == expected
+// (defaults to "" so an unset feature never triggers removal). Use to drop GUI
+// artifacts in pure-TTY presets, e.g. mode == "tmux".
+pub fun rm_if_feature(config_file: Text, base_path: Text, feature: Text, expected: Text, rel_path: Text): Null? {
+    const val = trust $ {JQ} -r '.features.{feature} // ""' {config_file} $
+    if val == expected {
+        rm_force("{base_path}/{rel_path}")?
+    }
+}
+
+pub fun rm_if_feature_or_die(config_file: Text, base_path: Text, feature: Text, expected: Text, rel_path: Text) {
+    rm_if_feature(config_file, base_path, feature, expected, rel_path) failed {
+        echo_error("rm_if_feature: failed for feature {feature}")
+    }
+}
+
 pub fun match_files(
     files: [Text],
     prefix: Text,
