@@ -286,12 +286,17 @@ run_and_postprocess() {
     fi
     [ "$step_rc" -ne 0 ] && { printf 'copals: %s failed (rc=%d)\n' "$subcmd" "$step_rc" >&2; exit "$step_rc"; }
 
-    # Compile postprocess.ab -> .sh, then run the self-contained .sh on the
-    # HOST with the SAME args. Mirrors the generate-step dispatch above: local
-    # compile with the vendored amber when COPALS_RUN=local or (auto + no
-    # image); in-container compile (writing into the bind-mounted repo)
-    # otherwise. Lets bare-metal users run `generate --audit` without building
-    # copals:dev, as long as `copals/dependencies.sh` populated vendor/.
+    # Compile postprocess.ab -> .sh (shared helper), then run the self-contained
+    # .sh on the HOST with the SAME args.
+    compile_postprocess
+    bash "$post_out" "$@"
+    exit $?
+}
+
+# Compile postprocess.ab -> postprocess.sh so it can run self-contained on the
+# HOST. Shared by run_and_postprocess (after generate/pipeline) and run_push.
+# Sets post_out (global) for the caller to execute.
+compile_postprocess() {
     post_src="$self_dir/src/gen/postprocess.ab"
     post_out="$self_dir/src/gen/postprocess.sh"
     if [ ! -f "$post_src" ]; then
@@ -322,8 +327,15 @@ run_and_postprocess() {
         printf 'copals: expected compiled postprocess not found at %s\n' "$post_out" >&2
         exit 1
     fi
+}
 
-    bash "$post_out" "$@"
+# `copals push <user_dir> <config_name> [dest_root] [--audit]` — publish an
+# already-generated bundle WITHOUT regenerating: run postprocess.sh with --push
+# (git-init + commit + push to the preset's publish remote/branch). Add --audit
+# to scan src/ first; insecure output is never pushed. Alias: publish.
+run_push() {
+    compile_postprocess
+    bash "$post_out" "$@" --push
     exit $?
 }
 
@@ -356,6 +368,14 @@ case "${0##*/}" in
             if [ "${1:-}" = "repos" ]; then
                 shift
                 exec sh "$self_dir/src/repos.sh" $@
+            fi
+            # push/publish: publish an already-generated bundle on the host
+            # (git wrap + commit + push to the preset's publish remote). Runs
+            # postprocess.sh with --push; does NOT regenerate — run
+            # generate/pipeline first.
+            if [ "${1:-}" = "push" ] || [ "${1:-}" = "publish" ]; then
+                shift
+                run_push "$@"
             fi
             # launch-window must run on the host (see run_launch_window_host).
             # Only special-case it when we would otherwise run in the container
