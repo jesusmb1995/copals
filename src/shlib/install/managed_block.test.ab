@@ -1,0 +1,44 @@
+import { assert_eq } from "std/test"
+import { managed_block, MANAGED_BEGIN, MANAGED_END } from "managed_block.ab"
+import { file_write, file_read, temp_dir_create } from "std/fs"
+import { temp_file_create } from "../temp.ab"
+
+test "managed_block: writes a fresh block when dest is absent" {
+    const src = temp_file_create("-src")?
+    file_write(src, "export FOO=bar")?
+    const dir = temp_dir_create("mb-XXXXXX")?
+    const dest = "{dir}/.zshrc"
+    managed_block(src, dest)?
+    assert_eq(file_read(dest)?, "{MANAGED_BEGIN}\nexport FOO=bar\n{MANAGED_END}")
+}
+
+test "managed_block: preserves user content and refreshes an existing block" {
+    const src = temp_file_create("-src2")?
+    file_write(src, "export BAZ=qux")?
+    const dir = temp_dir_create("mb2-XXXXXX")?
+    const dest = "{dir}/.zshrc"
+    file_write(dest, "alias mine=true\n\n{MANAGED_BEGIN}\nexport STALE=1\n{MANAGED_END}\n# user tail")?
+    managed_block(src, dest)?
+    assert_eq(file_read(dest)?, "alias mine=true\n\n# user tail\n\n{MANAGED_BEGIN}\nexport BAZ=qux\n{MANAGED_END}")
+}
+
+test "managed_block: idempotent (second run yields the same result)" {
+    const src = temp_file_create("-src3")?
+    file_write(src, "export IDEMP=1")?
+    const dir = temp_dir_create("mb3-XXXXXX")?
+    const dest = "{dir}/.zshrc"
+    managed_block(src, dest)?
+    const first = file_read(dest)?
+    managed_block(src, dest)?
+    assert_eq(file_read(dest)?, first)
+}
+
+test "managed_block: preserves internal blank lines in body and user content" {
+    const src = temp_file_create("-src4")?
+    file_write(src, "keep_a\n\n\nkeep_b")?
+    const dir = temp_dir_create("mb4-XXXXXX")?
+    const dest = "{dir}/.zshrc"
+    file_write(dest, "user_a\n\nuser_b")?
+    managed_block(src, dest)?
+    assert_eq(file_read(dest)?, "user_a\n\nuser_b\n\n{MANAGED_BEGIN}\nkeep_a\n\n\nkeep_b\n{MANAGED_END}")
+}
