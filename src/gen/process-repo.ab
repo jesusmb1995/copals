@@ -1,7 +1,7 @@
 #!/usr/bin/env amber
 
 import { file_exists, dir_create, dir_exists, file_write, temp_dir_create } from "std/fs"
-import { json_value, json_value_opt, json_list_value } from "json_config.ab"
+import { repo_json_value, repo_json_value_opt, repo_json_list } from "../shlib/json.ab"
 import { hash_dir, hash_dir_or_default, hash_arr, read_state_hash, write_state } from "../shlib/hash.ab"
 import { temp_file_create } from "../shlib/temp.ab"
 import { log_genstep } from "log_genstep.ab"
@@ -37,7 +37,7 @@ fun copy_repo(
 
     let rsync_excludes = ["--exclude", ".git/"]
     if impl_choice != "" {
-        const variants = json_list_value(config_file, repo_id, "impl_variants")?
+        const variants = repo_json_list(config_file, repo_id, "impl_variants")?
         for variant in variants {
             if variant == "" or variant == impl_choice: continue
             rsync_excludes += ["--exclude", "/{variant}/"]
@@ -55,14 +55,14 @@ pub fun process_repo(config_file: Text, gen_dir: Text, repo_id: Text, dest_dir: 
 
     const src_path = "{repos_dir}/{repo_id}"
 
-    const impl_choice = json_value_opt(config_file, repo_id, "impl")
+    const impl_choice = repo_json_value_opt(config_file, repo_id, "impl")
     const new_hash = hash_arr([hash_dir_or_default(src_path), impl_choice])?
 
     const rw_key = "repo__{repo_id}"
     const rw_filename = "{CHANGE_MARK_DIR}/{rw_key}"
     const old_hash = read_state_hash(state_dir, rw_key)
 
-    const target = json_value(config_file, repo_id, "target")?
+    const target = repo_json_value(config_file, repo_id, "target")?
     const target_path = "{dest_dir}/{target}"
 
     if force_run or new_hash != old_hash or not dir_exists(target_path) {

@@ -11,8 +11,7 @@ import { run_parallel } from "../shlib/parallel.ab"
 import { get_filename_without_prefix } from "../shlib/regex.ab"
 import { render_j2_template } from "render-job.ab"
 import { compile_amber_job } from "compile-job.ab"
-import { write_json_array } from "../shlib/json.ab"
-import { json_value } from "json_config.ab"
+import { write_json_array, repo_json_value } from "../shlib/json.ab"
 import { JQ, JSONNET, JSONSCHEMA, LUA } from "../shlib/vendor.ab"
 import { jsonnet_render_tla_file } from "../shlib/jsonnet.ab"
 import { get_cache_dir } from "../shlib/cache.ab"
@@ -159,7 +158,7 @@ fun run_generate_postrender(hooks_src: Text, dest_dir: Text, config_file: Text, 
         const ab_hook = "{hooks_src}/generate_{repo_id}_postrender.ab"
         const lua_hook = "{hooks_src}/generate_{repo_id}_postrender.lua"
         if file_exists(ab_hook) or file_exists(lua_hook) {
-            const target = json_value(config_file, repo_id, "target")?
+            const target = repo_json_value(config_file, repo_id, "target")?
             const target_path = "{dest_dir}/{target}"
             if file_exists(ab_hook) {
                 $ SOURCE_IGNORED="" DEST_DIR={dest_dir} CONFIG_FILE={config_file} REPO_ID={repo_id} TARGET_PATH={target_path} HOOKS_DIR={hooks_src} J2_BIN={JQ} amber {ab_hook} $ ?

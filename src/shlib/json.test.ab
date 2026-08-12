@@ -1,7 +1,9 @@
 import { assert_eq } from "std/test"
-import { to_json_array, json_value, json_value_or, json_has } from "json.ab"
+import { to_json_array, json_value, json_value_or, json_has, repo_json_value, repo_json_value_opt, repo_json_list } from "json.ab"
 import { temp_file_create } from "temp.ab"
 import { file_write } from "std/fs"
+import { join } from "std/text"
+import { rm_force } from "fs.ab"
 import { JQ } from "vendor.ab"
 
 test "json: can generate correct json array" {
@@ -73,4 +75,43 @@ test "json_has: works with --arg variables" {
     // literal), so the arg value is inlined into the filter instead of `--arg`.
     const result = $ {JQ} -r '.name == "alice"' {tmp} $ ?
     assert_eq(result, "true")
+}
+
+// --- repo-scoped lookups (moved from gen/json_config.test.ab; doc 02, change 3) ---
+// Fixture mirrors the shape generate.ab consumes: a top-level "repositories"
+// array where each row has an "id" and per-repo keys. Built line-by-line
+// because amber treats a bare { as string interpolation (\{ escapes it).
+fun build_repo_fixture(): Text {
+    let fx_lines = []
+    fx_lines += ["\{"]
+    fx_lines += ["  \"repositories\": ["]
+    fx_lines += ["    \{ \"id\": \"nvim\", \"target\": \".config/nvim\", \"tags\": [\"editor\", \"gui\"] },"]
+    fx_lines += ["    \{ \"id\": \"zsh\",  \"target\": \".config/zsh\" }"]
+    fx_lines += ["  ]"]
+    fx_lines += ["}"]
+    return join(fx_lines, "\n")
+}
+
+fun repo_fixture_path(): Text? {
+    const p = "/tmp/amber_repo_json_test.json"
+    file_write(p, build_repo_fixture())?
+    return p
+}
+
+test "repo_json_value: reads a repo-scoped scalar" {
+    const f = repo_fixture_path()?
+    assert_eq(repo_json_value(f, "nvim", "target")?, ".config/nvim")
+    rm_force(f)?
+}
+
+test "repo_json_value_opt: empty string when the repo lacks the key" {
+    const f = repo_fixture_path()?
+    assert_eq(repo_json_value_opt(f, "zsh", "tags"), "")
+    rm_force(f)?
+}
+
+test "repo_json_list: returns array elements for a repo" {
+    const f = repo_fixture_path()?
+    assert_eq(repo_json_list(f, "nvim", "tags")?, ["editor", "gui"])
+    rm_force(f)?
 }

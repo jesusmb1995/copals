@@ -1,4 +1,5 @@
 import { file_write } from "std/fs"
+import { split_lines } from "std/text"
 import { JQ } from  "vendor.ab"
 
 pub fun to_json_array(key: Text, arr: [Text]): Text? {
@@ -29,4 +30,35 @@ pub fun json_value_or(json_filepath: Text, key: Text, default: Text): Text? {
 pub fun json_has(json_filepath: Text, jq_filter: Text): Bool? {
     const val = $ {JQ} -r '{jq_filter}' {json_filepath} $ ?
     return val == "true"
+}
+
+// --- repo-scoped lookups -------------------------------------------------
+// Moved from gen/json_config.ab (doc 02, change 3). Read a value from a row of
+// the top-level "repositories" array selected by id. jq filters are preserved
+// verbatim from json_config.ab.
+fun _repo_json_value(config_file: Text, id: Text, key: Text): Text? {
+    return $ {JQ} -re --arg id {id} --arg key {key} '.repositories[] | select(.id == "{id}") | .[\$key]' {config_file} $ ?
+}
+
+fun _repo_json_array_value(config_file: Text, id: Text, key: Text): [Text]? {
+    return split_lines($ {JQ} -re --arg id {id} --arg key {key} '.repositories[] | select(.id == "{id}") | .[\$key][]' {config_file} $ ?)
+}
+
+pub fun repo_json_value(config_file: Text, id: Text, key: Text): Text? {
+    const result = _repo_json_value(config_file, id, key) failed {
+        echo("json_value failed: repo={id} key={key} file={config_file}")
+        fail status()
+    }
+    return result
+}
+
+pub fun repo_json_value_opt(config_file: Text, id: Text, key: Text): Text {
+    const result = _repo_json_value(config_file, id, key) failed {
+        return ""
+    }
+    return result
+}
+
+pub fun repo_json_list(config_file: Text, id: Text, key: Text): [Text]? {
+    return _repo_json_array_value(config_file, id, key)?
 }
