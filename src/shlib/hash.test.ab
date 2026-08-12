@@ -1,14 +1,32 @@
 import { assert_eq } from "std/test"
-import { hash_arr } from "hash.ab"
+import { dir_create, file_write } from "std/fs"
+import { rm_force } from "fs.ab"
+import { hash_arr, hash_dir_or_default, read_state_hash, read_state_target, write_state } from "hash.ab"
 
-test "hash_arr: produces consistent hash" {
-    const h1 = hash_arr(["a", "b", "c"])?
-    const h2 = hash_arr(["a", "b", "c"])?
-    assert_eq(h1, h2)
+test "hash_arr: is deterministic for identical input" {
+    assert_eq(hash_arr(["a", "b", "c"])?, hash_arr(["a", "b", "c"])?)
 }
 
-test "hash_arr: produces different hash for different inputs" {
-    const h1 = hash_arr(["a", "b"])?
-    const h2 = hash_arr(["c", "d"])?
-    assert_eq(h1 != h2, true)
+test "hash_arr: order matters" {
+    assert_eq(hash_arr(["a", "b"])? == hash_arr(["b", "a"])?, false)
+}
+
+test "hash_arr: produces a 64-char hex digest" {
+    assert_eq(len(hash_arr(["x"])?), 64)
+}
+
+test "hash_dir_or_default: returns default for a missing directory" {
+    assert_eq(hash_dir_or_default("/no/such/dir/here", "DEFAULT"), "DEFAULT")
+}
+
+test "read_state_hash: empty string for a missing state file" {
+    assert_eq(read_state_hash("/tmp/amber_no_state_dir", "missing_key"), "")
+}
+
+test "write_state/read_state_hash: round-trips the hash on line 1" {
+    const dir = "/tmp/amber_hash_state_test"
+    rm_force(dir) failed {}
+    write_state(dir, "repo__x", "deadbeef")?
+    assert_eq(read_state_hash(dir, "repo__x"), "deadbeef")
+    rm_force(dir)?
 }
