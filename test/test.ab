@@ -3,7 +3,7 @@ import { run_check } from "check.ab"
 import { run_smoke_lib_tests, run_smoke_integration_test } from "smoke.ab"
 import { run_pipeline_integration_test } from "integration.ab"
 import { echo_error } from "std/env"
-import { SHLIB_DIR, GEN_DIR } from "../src/vars.ab"
+import { SHLIB_DIR, GEN_SCRIPTS_DIR } from "../src/vars.ab"
 
 fun print_usage(): Null {
     echo("Usage: test [type]")
@@ -11,7 +11,9 @@ fun print_usage(): Null {
 }
 
 main(args) {
-    const default_dirs = [SHLIB_DIR, GEN_DIR]
+    // GEN_SCRIPTS_DIR (src/gen), not GEN_DIR: GEN_DIR points at the copals
+    // repo root, so the old [SHLIB_DIR, GEN_DIR] pair never reached src/gen.
+    const default_dirs = [SHLIB_DIR, GEN_SCRIPTS_DIR]
     let type = "lib"
     if len(args) > 1 {
         type = args[1]
@@ -19,7 +21,7 @@ main(args) {
     if {
         // TODO vendor... checks dependencies.sh inside new container and see if it works...
         type == "check": run_check(default_dirs)?
-        type == "lib": run_lib_tests([SHLIB_DIR])?
+        type == "lib": run_lib_tests(default_dirs)?
         type == "smoke": { 
             run_smoke_lib_tests()?
             run_smoke_integration_test()?
@@ -27,7 +29,7 @@ main(args) {
         type == "integration": run_pipeline_integration_test()?
         type == "all": {
             run_check(default_dirs)?
-            run_lib_tests([SHLIB_DIR])?
+            run_lib_tests(default_dirs)?
             run_smoke_integration_test()?
             run_pipeline_integration_test()?
         }

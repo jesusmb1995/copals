@@ -1,22 +1,10 @@
-import { file_glob, dir_exists } from "std/fs"
-import { echo_success, echo_warning } from "std/env"
+import { echo_success } from "std/env"
 import { join } from "std/text"
 import { run_parallel } from "../src/shlib/parallel.ab"
-
-pub fun find_all_ab_files(dirs: [Text]): [Text] {
-    let files = []
-    for d in dirs {
-        if not dir_exists(d) {
-            echo_warning("dir not found: {d}")
-            continue
-        }
-        files += file_glob("{d}/*.ab")
-    }
-    return files
-}
+import { find_ab_files } from "lib.ab"
 
 pub fun run_check(default_dirs: [Text]): Null? {
-    const files = find_all_ab_files(default_dirs)
+    const files = find_ab_files(default_dirs, "*.ab")
     if len(files) == 0 {
         echo("No .ab files found in: {join(default_dirs, ", ")}")
         return null

@@ -3,16 +3,20 @@ import { echo_error, echo_success, echo_warning } from "std/env"
 import { join } from "std/text"
 import { run_parallel } from "../src/shlib/parallel.ab"
 
-pub fun find_test_files(dirs: [Text]): [Text] {
+pub fun find_ab_files(dirs: [Text], pattern: Text): [Text] {
     let files = []
     for d in dirs {
         if not dir_exists(d) {
-            echo_warning("test dir not found: {d}")
+            echo_warning("dir not found: {d}")
             continue
         }
-        files += file_glob("{d}/*.test.ab")
+        files += file_glob("{d}/{pattern}")
     }
     return files
+}
+
+pub fun find_test_files(dirs: [Text]): [Text] {
+    return find_ab_files(dirs, "*.test.ab")
 }
 
 pub fun check_test_files(files: [Text]): Bool {
