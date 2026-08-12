@@ -1,0 +1,14 @@
+import { assert_eq } from "std/test"
+import { current_os, is_macos, is_linux } from "os.ab"
+
+test "current_os: returns the lowercase kernel name" {
+    assert_eq(current_os(), "linux")
+}
+
+test "is_linux: true on a Linux host" {
+    assert_eq(is_linux(), true)
+}
+
+test "is_macos: false on a Linux host" {
+    assert_eq(is_macos(), false)
+}
