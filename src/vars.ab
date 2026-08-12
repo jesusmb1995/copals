@@ -1,15 +1,7 @@
 import { file_exists } from "std/fs"
-import { replace_regex } from "std/text"
+import { project_root } from "shlib/vendor.ab"
 
-fun _project_root(): Text {
-    if file_exists("src/copals.ab") {
-        const pwd_val = pwd()
-        return replace_regex(pwd_val, "/[^/]+$", "", true)
-    }
-    return pwd()
-}
-
-pub const PROJECT_ROOT = _project_root()
+pub const PROJECT_ROOT = project_root()
 
 // TODO must be handlded without repo root being outside copals...
 const _REPO_GEN_DIR = "{PROJECT_ROOT}/copals"
