@@ -1,0 +1,44 @@
+import { assert_eq } from "std/test"
+import { file_write } from "std/fs"
+import { join } from "std/text"
+import { rm_force } from "../shlib/fs.ab"
+import { json_value, json_value_opt, json_list_value } from "json_config.ab"
+
+// Fixture mirrors the shape generate.ab consumes: a top-level "repositories"
+// array where each row has an "id" and per-repo keys (target, tags, ...).
+// Built line-by-line because amber treats a bare { as string interpolation:
+// open braces are escaped (\{), close braces are left plain.
+fun build_fixture(): Text {
+    let fx_lines = []
+    fx_lines += ["\{"]
+    fx_lines += ["  \"repositories\": ["]
+    fx_lines += ["    \{ \"id\": \"nvim\", \"target\": \".config/nvim\", \"tags\": [\"editor\", \"gui\"] },"]
+    fx_lines += ["    \{ \"id\": \"zsh\",  \"target\": \".config/zsh\" }"]
+    fx_lines += ["  ]"]
+    fx_lines += ["}"]
+    return join(fx_lines, "\n")
+}
+
+fun fixture_path(): Text? {
+    const p = "/tmp/amber_json_config_test.json"
+    file_write(p, build_fixture())?
+    return p
+}
+
+test "json_value: reads a repo-scoped scalar" {
+    const f = fixture_path()?
+    assert_eq(json_value(f, "nvim", "target")?, ".config/nvim")
+    rm_force(f)?
+}
+
+test "json_value_opt: empty string when the repo lacks the key" {
+    const f = fixture_path()?
+    assert_eq(json_value_opt(f, "zsh", "tags"), "")
+    rm_force(f)?
+}
+
+test "json_list_value: returns array elements for a repo" {
+    const f = fixture_path()?
+    assert_eq(json_list_value(f, "nvim", "tags")?, ["editor", "gui"])
+    rm_force(f)?
+}
