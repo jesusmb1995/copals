@@ -37,43 +37,19 @@ fun resolve_vendor_dir(): Text {
 
 pub const VENDOR_DIR = resolve_vendor_dir()
 
-fun jq_resolve(): Text {
+// resolve_vendor_tool: resolve a vendored binary by name. Falls back to the
+// bare name on PATH when no vendor dir is populated (doc 02, change 2: the
+// former jq_resolve/j2_resolve/jsonnet_resolve/jsonschema_resolve/lua_resolve
+// were 5 copies of this same 2-line rule).
+fun resolve_vendor_tool(name: Text): Text {
     if VENDOR_DIR == "" {
-        return "jq"
+        return name
     }
-    return "{VENDOR_DIR}/jq"
+    return "{VENDOR_DIR}/{name}"
 }
 
-fun j2_resolve(): Text {
-    if VENDOR_DIR == "" {
-        return "j2"
-    }
-    return "{VENDOR_DIR}/j2"
-}
-
-fun jsonnet_resolve(): Text {
-    if VENDOR_DIR == "" {
-        return "jsonnet"
-    }
-    return "{VENDOR_DIR}/jsonnet"
-}
-
-fun jsonschema_resolve(): Text {
-    if VENDOR_DIR == "" {
-        return "jsonschema"
-    }
-    return "{VENDOR_DIR}/jsonschema"
-}
-
-fun lua_resolve(): Text {
-    if VENDOR_DIR == "" {
-        return "lua"
-    }
-    return "{VENDOR_DIR}/lua"
-}
-
-pub const JQ = jq_resolve()
-pub const J2 = j2_resolve()
-pub const JSONNET = jsonnet_resolve()
-pub const JSONSCHEMA = jsonschema_resolve()
-pub const LUA = lua_resolve()
+pub const JQ = resolve_vendor_tool("jq")
+pub const J2 = resolve_vendor_tool("j2")
+pub const JSONNET = resolve_vendor_tool("jsonnet")
+pub const JSONSCHEMA = resolve_vendor_tool("jsonschema")
+pub const LUA = resolve_vendor_tool("lua")
