@@ -1,0 +1,16 @@
+import { assert_eq } from "std/test"
+import { time_ms, sleep_ms } from "time.ab"
+
+test "time_ms: returns a positive millisecond timestamp" {
+    assert_eq(time_ms()? > 0, true)
+}
+
+test "time_ms: is monotonic non-decreasing" {
+    const t1 = time_ms()?
+    const t2 = time_ms()?
+    assert_eq(t2 >= t1, true)
+}
+
+test "sleep_ms: completes without error for a short sleep" {
+    sleep_ms(1)?
+}
