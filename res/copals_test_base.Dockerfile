@@ -7,7 +7,10 @@ USER root
 RUN find /etc /opt /usr /var \( -type f -o -type l \) | sort > /tmp/before.txt
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
- apt-get install -y --no-install-recommends \
+ mkdir -p /var/cache/apt/apt-fast /var/cache/apt/archives/partial \
+# Might need update here only if base image is outdated
+# && /usr/bin/apt-get update \
+ && apt-get install -y --no-install-recommends \
     xvfb \
     xdotool \
     imagemagick \

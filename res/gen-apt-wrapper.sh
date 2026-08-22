@@ -20,11 +20,13 @@ case "\$1" in
     ;;
   update)
     SOURCES_HASH=\$(sha256sum /etc/apt/sources.list | cut -d" " -f1)
-    if [ "\$SOURCES_HASH" != "\$EXPECTED_SOURCES_HASH" ]; then
+    # Also re-update when the package lists are gone (e.g. pruned cache
+    # volume) even if sources.list is unchanged.
+    if [ "\$SOURCES_HASH" = "\$EXPECTED_SOURCES_HASH" ] && ls /var/lib/apt/lists/*Packages* >/dev/null 2>&1; then
+      echo "apt-get update: skipped (sources.list unchanged)"
+    else
       EXPECTED_SOURCES_HASH=\$SOURCES_HASH
       exec eatmydata apt-fast "\$@"
-    else
-      echo "apt-get update: skipped (sources.list unchanged)"
     fi
     ;;
   remove|purge|autoremove|upgrade|full-upgrade|search|show|list|clean|autoclean)

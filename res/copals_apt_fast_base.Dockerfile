@@ -30,8 +30,10 @@ RUN echo "4df71b8bba3d2553e3450833f6626560d5c5022e5866a6816b53f131c99904b2  /usr
  && sed -i 's|^#_APTMGR=apt-get|_APTMGR=/usr/bin/apt-get|' /etc/apt-fast.conf
 
 # Keep using snapshot list, that pins versions to that date and keep container stable/reproducible
+# mkdir -p: a pruned/empty cache mount shadows the image's /var/cache/apt;
+# without apt-fast/ present, apt-fast's realpath of its DLDIR fails.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked  \
-  apt-fast update
+  mkdir -p /var/cache/apt/apt-fast /var/cache/apt/archives/partial && apt-fast update
 # update fetches faster than raw apt-get update
 #RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 #  rm -f /etc/apt/sources.list.d/debian.sources \

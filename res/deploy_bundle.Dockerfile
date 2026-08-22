@@ -23,11 +23,15 @@ WORKDIR ${HOME}/${DEPLOYABLE_COPALS_BUNDLE}
 RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99snapshot-valid-until
 # Brew needs a tmpfs for lock files (overlayfs filename length issue).
 # /tmp as tmpfs ensures no apt-fast.lock from previous layer persists.
+# mkdir -p: a pruned/empty cache mount shadows the image's /var/cache/apt;
+# without apt-fast/ + archives/partial/ present, apt-fast's realpath of its
+# DLDIR fails -> "mkdir: cannot create directory ''" -> install dies.
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=tmpfs,target=/tmp/brew-locks \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/home/${USERNAME}/.npm,sharing=locked \
-    ./install.sh
+    mkdir -p /var/cache/apt/apt-fast /var/cache/apt/archives/partial \
+    && ./install.sh
 
 # Fix ownership: install.sh runs as root, ensure the user owns its home.
 # Keep .homebrew owned by root so brew --reuse (run as root) can write to it.
