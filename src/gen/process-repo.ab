@@ -35,7 +35,13 @@ fun copy_repo(
         dir_create(target_path)?
     }
 
-    let rsync_excludes = ["--exclude", ".git/"]
+    // Host-side test suites stay in the SOURCE repos (user/repos/...): they
+    // never ship to the published bundle/installer.
+    let rsync_excludes = [
+        "--exclude", ".git/",
+        "--exclude", "test_*.sh",
+        "--exclude", "/test/",
+    ]
     if impl_choice != "" {
         const variants = repo_json_list(config_file, repo_id, "impl_variants")?
         for variant in variants {
@@ -44,7 +50,10 @@ fun copy_repo(
         }
     }
 
-    $ rsync -a --delete {rsync_excludes} "{src_path}/" "{target_path}/" $ ?
+    // --delete-excluded: excluded patterns (tests, .git) are also REMOVED from
+    // a previously generated target, not just skipped (plain --exclude would
+    // protect them from --delete and stale files would survive regeneration).
+    $ rsync -a --delete --delete-excluded {rsync_excludes} "{src_path}/" "{target_path}/" $ ?
     log_genstep("copied", target_path)
 }
 
